@@ -23,6 +23,7 @@ class CleanStartSeeder extends Seeder
             PermissionsModulesSeeder::class,
             CreditPaymentReminderNotificationTemplateSeeder::class,
             StriveAccountsSeeder::class,
+            CanteenStockSeeder::class,
         ]);
 
         $this->command?->info('');

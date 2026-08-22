@@ -8,9 +8,9 @@ return [
 
     'logo_dark' => 'images/flowdesk-logo-dark.svg',
 
-    'icon' => 'images/flowdesk-icon.svg',
+    'icon' => 'images/strive-eagle-icon.png',
 
-    'favicon' => 'favicon.svg',
+    'favicon' => 'images/strive-eagle-icon.png',
 
     'login_visual' => 'images/flowdesk-login-visual.svg',
 

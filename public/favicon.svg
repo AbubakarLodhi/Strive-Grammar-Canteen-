@@ -1,10 +1,3 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Strive Uniform and Bookshop">
-  <defs>
-    <linearGradient id="strive-mark" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#1B4F72"/>
-      <stop offset="100%" stop-color="#15405C"/>
-    </linearGradient>
-  </defs>
-  <rect width="32" height="32" rx="8" fill="url(#strive-mark)"/>
-  <path d="M9 16h14M9 11h18M9 21h11" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 32 32" role="img" aria-label="Strive Uniform and Bookshop">
+  <image width="32" height="32" xlink:href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAIKADAAQAAAABAAAAIAAAAACshmLzAAADUklEQVRYCe1Uz28TRxSeNzvr3TixSUkMCm1AuEQKBCW0tCRCSsMPCcmol1LlUMEBRQipBwRC4sbB4l9A9AQpPVBQQCg9NeIAB2grDoF41yaOrMgoQikJhEAcr70/Zh6zQRZ2EhGoApd6pNmZ92be97753uwQUm1VBaoKVBUoUwAn48Ey85NMaXkWa3bwSMFo7Sn3fex5BQEVrYcMp65ZZuvuj5U4HkeKA73KEnxEAoQgdYy1/WJMnyuORL+XtvStXsPEgdq5xK5jmDmhlVDfKjB8nOXNr486ZNPv3NXTAf3JjaL5xWnSi0vZlqI/YJzJxMIOMS5r7MUzaDlvLxtqpVo6XaM+xZNrsmgqiKMKesm11wvp7zYvG/CezqLxbdQzwv845obRV6l9McT424NXYiDkja9ibqrhljADjkgAYhqQm8FJx2z+OZv9Va/cv5KF1EpEf+TJmgnxiKGbXD9YSLRXHKaCycDAdcrITA8QaysRPjgQLBJCidWksslfmudP3rWT0Z+y2fiKRF7KUztG4yUNJm5QWmgWWDPleJGLNR1Gtpz2kks2+3BPfUgZ/lPRc11oyWWQXd7QBTqqHIERwXVDYPgKVyOD+taRcenk/rovrW1cbQF43qdCvg9Uu5H41WZIUGivPLplT6AtNeLvLbUlBPyF/KPupgA3rzAtt5e4gqAnnW84LMSBT4RRqQ7LC1V7ILyG/kD748vzyR86GKQPKzjdo/DZnUCFQjQgwtGnXL7xqN4xNrQAUPapKEHJX7vt7r+s7tRB246cEUTPAGMEgkBACg8BuUu8KQ2AW6uouW6FTJ+du7+/oW77TVOedQQhmEXQPKT6c+41XJx327uXS+7nW1aBEhF/fJbuC4XEvU6F5LpA2NsIul+C8KKUuY2E84Xq+IrY3uYLFPMhRbUOoGB/CRr+w3M+vx3c8fekTFOmXzn6exCo3C4fpl5C584dqtfE2D4mJi5QakU8XP+UC81QwL1VsFt+C39zZ+ZdSSsx/4NVHG7b4iXDQ/47gRnZx2vRM0PjuQexyIfCrViCxYD+o8TcsX5QClw4yihCIAfoarSGt3Lvs/ta2+Nzi2NW1c5lYpFcYvc6+VssusAI06neulVNVgWrKlBV4H+hwGsd0Wy2d0At4QAAAABJRU5ErkJggg=="/>
 </svg>
