@@ -6,6 +6,11 @@ use Tests\TestCase;
 
 class ProductionStabilityTest extends TestCase
 {
+    public function test_root_redirects_to_merchant_login(): void
+    {
+        $this->get('/')->assertRedirect('/merchant/login');
+    }
+
     public function test_assign_images_dev_route_is_not_exposed(): void
     {
         $this->get('/assign-images')->assertNotFound();

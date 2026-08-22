@@ -29,7 +29,7 @@ class CustomerResource extends Resource
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::Users;
 
-    protected static string|\UnitEnum|null $navigationGroup = 'Procurement';
+    protected static string|\UnitEnum|null $navigationGroup = 'Sales';
 
     protected static ?string $recordTitleAttribute = 'Customer';
 
@@ -53,17 +53,13 @@ class CustomerResource extends Resource
         return $user->hasPermissionTo('customers.view', $guard);
     }
 
-    /**
-     * @return \Illuminate\Database\Eloquent\Builder
-     */
-    public static function getEloquentQuery(): \Illuminate\Database\Eloquent\Builder
+    public static function getEloquentQuery(): Builder
     {
         $user = Filament::auth()->user();
         $query = parent::getEloquentQuery();
 
         return static::scopeVisibleCustomers($query, $user);
     }
-
 
     public static function form(Schema $schema): Schema
     {

@@ -3,10 +3,12 @@
 namespace App\Filament\Resources\Payrolls\Pages;
 
 use App\Filament\Resources\Payrolls\PayrollResource;
+use App\Services\Finance\OperationalLedgerPoster;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\ViewAction;
 use Filament\Facades\Filament;
 use Filament\Resources\Pages\EditRecord;
+use Illuminate\Support\Str;
 
 class EditPayroll extends EditRecord
 {
@@ -16,15 +18,13 @@ class EditPayroll extends EditRecord
     {
         $name = (string) ($this->record?->name ?? '');
 
-        return 'Edit ' . \Illuminate\Support\Str::limit($name, 30);
+        return 'Edit '.Str::limit($name, 30);
     }
-
 
     protected function getRedirectUrl(): string
     {
         return $this->getResource()::getUrl('index');
     }
-
 
     protected function getHeaderActions(): array
     {
@@ -54,5 +54,10 @@ class EditPayroll extends EditRecord
         $data['deductions'] = $data['deductions'] ?? [];
 
         return $data;
+    }
+
+    protected function afterSave(): void
+    {
+        app(OperationalLedgerPoster::class)->syncPayroll($this->record->fresh());
     }
 }

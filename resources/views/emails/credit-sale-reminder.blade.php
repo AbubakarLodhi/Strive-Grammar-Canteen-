@@ -7,7 +7,7 @@
     $dueDateFormatted = $sale->due_date?->format('d M, Y') ?? '—';
     $supportEmail = $merchant?->email;
     $settings = $merchant?->settings;
-    $themeBlue = $settings?->primary_color ?? '#6366f1';
+    $themeBlue = $settings?->primary_color ?? '#1B4F72';
     $themeGreen = $settings?->success_color ?? '#0bb783';
     $themeTeal = '#1bc5bd';
     $grandTotalBackground = "linear-gradient(135deg, {$themeBlue} 0%, {$themeGreen} 62%, {$themeTeal} 100%)";

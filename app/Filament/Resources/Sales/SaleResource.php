@@ -9,14 +9,17 @@ use App\Filament\Resources\Sales\Pages\ViewSale;
 use App\Filament\Resources\Sales\Schemas\SaleForm;
 use App\Filament\Resources\Sales\Schemas\SaleInfolist;
 use App\Filament\Resources\Sales\Tables\SalesTable;
+use App\Models\Merchant;
 use App\Models\PermissionModule;
 use App\Models\Sale;
+use App\Models\User;
 use BackedEnum;
 use Filament\Facades\Filament;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 class SaleResource extends Resource
 {
@@ -24,7 +27,7 @@ class SaleResource extends Resource
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::CurrencyDollar;
 
-    protected static string|\UnitEnum|null $navigationGroup = 'Procurement';
+    protected static string|\UnitEnum|null $navigationGroup = 'Sales';
 
     protected static ?int $navigationSort = 1;
 
@@ -81,7 +84,7 @@ class SaleResource extends Resource
         return false;
     }
 
-    public static function getEloquentQuery(): \Illuminate\Database\Eloquent\Builder
+    public static function getEloquentQuery(): Builder
     {
         $query = parent::getEloquentQuery()
             ->with([
@@ -89,12 +92,12 @@ class SaleResource extends Resource
                 'items.product:id,name,sku',
                 'creditReminders:id,sale_id,is_active,next_send_at,last_sent_at,remind_at',
             ]);
-        $user  = Filament::auth()->user();
+        $user = Filament::auth()->user();
 
         $merchantId = match (true) {
-            $user instanceof \App\Models\Merchant => $user->id,
-            $user instanceof \App\Models\User     => $user->merchant_id,
-            default                               => null,
+            $user instanceof Merchant => $user->id,
+            $user instanceof User => $user->merchant_id,
+            default => null,
         };
 
         if (! $merchantId) {
@@ -104,7 +107,6 @@ class SaleResource extends Resource
         // All users (merchant or staff) see all sales for their merchant
         return $query->where('merchant_id', $merchantId);
     }
-
 
     public static function form(Schema $schema): Schema
     {

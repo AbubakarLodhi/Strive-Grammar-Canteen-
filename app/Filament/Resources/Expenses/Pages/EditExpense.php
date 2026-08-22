@@ -4,11 +4,13 @@ namespace App\Filament\Resources\Expenses\Pages;
 
 use App\Filament\Resources\Expenses\ExpenseResource;
 use App\Models\Branch;
+use App\Services\Finance\OperationalLedgerPoster;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\ViewAction;
 use Filament\Facades\Filament;
 use Filament\Resources\Pages\EditRecord;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class EditExpense extends EditRecord
 {
@@ -16,10 +18,10 @@ class EditExpense extends EditRecord
 
     public function getTitle(): string
     {
-        return 'Edit ' . \Illuminate\Support\Str::limit(
-                (string) ($this->record?->name ?? ''),
-                30
-            );
+        return 'Edit '.Str::limit(
+            (string) ($this->record?->name ?? ''),
+            30
+        );
     }
 
     protected function getRedirectUrl(): string
@@ -45,9 +47,9 @@ class EditExpense extends EditRecord
     {
         $data['items'] = $this->record->items->map(fn ($item) => [
             'description' => $item->description,
-            'quantity'    => $item->quantity,
-            'unit_price'  => $item->unit_price,
-            'line_total'  => $item->line_total,
+            'quantity' => $item->quantity,
+            'unit_price' => $item->unit_price,
+            'line_total' => $item->line_total,
         ])->toArray();
 
         return $data;
@@ -66,9 +68,9 @@ class EditExpense extends EditRecord
 
         $subtotal = collect($items)->sum(fn ($i) => (float) ($i['line_total'] ?? 0));
         $discount = (float) ($data['discount'] ?? 0);
-        $tax      = (float) ($data['tax'] ?? 0);
+        $tax = (float) ($data['tax'] ?? 0);
 
-        $data['subtotal']     = $subtotal;
+        $data['subtotal'] = $subtotal;
         $data['total_amount'] = $subtotal - $discount + $tax;
 
         return $data;
@@ -85,5 +87,7 @@ class EditExpense extends EditRecord
                 $this->record->items()->create($item);
             }
         });
+
+        app(OperationalLedgerPoster::class)->syncExpense($this->record->fresh());
     }
 }

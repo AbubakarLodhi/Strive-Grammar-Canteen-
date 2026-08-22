@@ -86,7 +86,7 @@ class DemoVisitorSessionTest extends TestCase
 
         $response = $this->get(route('demo.login'));
 
-        $response->assertRedirect(route('landing'));
+        $response->assertRedirect(route('filament.merchant.auth.login'));
         $response->assertSessionHas('demo_expired');
         $this->assertGuest('merchant');
         $this->assertDatabaseMissing('merchants', ['id' => $merchant->id]);

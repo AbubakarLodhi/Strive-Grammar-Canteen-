@@ -15,6 +15,7 @@ use App\Models\ProductVariant;
 use App\Models\Sale;
 use App\Models\User;
 use App\Services\CreditReminderScheduler;
+use App\Services\Finance\OperationalLedgerPoster;
 use App\Services\Notifications\NotificationDispatcher;
 use App\Services\PaymentLedgerService;
 use App\Support\ProductStockAvailability;
@@ -753,6 +754,7 @@ class CreateSale extends CreateRecord
             return;
         }
         $this->queueSaleCreatedEmail($sale);
+        app(OperationalLedgerPoster::class)->syncSale($sale);
     }
 
     private function queueSaleCreatedEmail(Sale $sale): void

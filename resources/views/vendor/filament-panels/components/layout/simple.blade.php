@@ -24,6 +24,19 @@
     ])>
         {{ \Filament\Support\Facades\FilamentView::renderHook(\Filament\View\PanelsRenderHook::SIMPLE_LAYOUT_START, scopes: $renderHookScopes) }}
 
+        @if (! filament()->auth()->check())
+            <aside class="flowdesk-auth-visual">
+                <div class="flowdesk-auth-brand">
+                    <img
+                        class="flowdesk-auth-visual-image"
+                        src="{{ asset('images/strive-eagle.png') }}?v=2"
+                        alt=""
+                    >
+                    <p class="flowdesk-auth-brand-name">Strive Uniform and Bookshop</p>
+                </div>
+            </aside>
+        @endif
+
         @if (($hasTopbar ?? true) && filament()->auth()->check())
             <div class="fi-simple-layout-header">
                 @if (filament()->hasDatabaseNotifications())
@@ -37,12 +50,6 @@
                     @livewire(Filament\Livewire\SimpleUserMenu::class)
                 @endif
             </div>
-        @endif
-
-        @if (! filament()->auth()->check())
-            <aside class="flowdesk-auth-visual" aria-hidden="true">
-                @include('filament.auth.login-visual')
-            </aside>
         @endif
 
         <div class="fi-simple-main-ctn">

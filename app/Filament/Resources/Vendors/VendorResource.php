@@ -29,11 +29,11 @@ class VendorResource extends Resource
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::Users;
 
-    protected static string|\UnitEnum|null $navigationGroup = 'Procurement';
+    protected static string|\UnitEnum|null $navigationGroup = 'Purchase';
 
     protected static ?string $recordTitleAttribute = 'Vendor';
 
-    protected static ?int $navigationSort = 6;
+    protected static ?int $navigationSort = 3;
 
     public static function canViewAny(): bool
     {
@@ -51,7 +51,7 @@ class VendorResource extends Resource
         return $user->hasPermissionTo('vendors.view', $guard);
     }
 
-    public static function getEloquentQuery(): \Illuminate\Database\Eloquent\Builder
+    public static function getEloquentQuery(): Builder
     {
         $user = Filament::auth()->user();
         $query = parent::getEloquentQuery();

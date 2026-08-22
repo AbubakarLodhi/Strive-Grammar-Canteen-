@@ -10,6 +10,7 @@ use App\Models\Merchant;
 use App\Models\Payment;
 use App\Models\Product;
 use App\Models\ProductVariant;
+use App\Services\Finance\OperationalLedgerPoster;
 use App\Services\Notifications\NotificationDispatcher;
 use App\Services\PaymentLedgerService;
 use App\Support\ProductStockAvailability;
@@ -607,6 +608,11 @@ class EditSale extends EditRecord
             $this->sendPaymentSyncEmail();
         }
 
+        $sale = $this->record->fresh(['payments']);
+        if ($sale) {
+            app(OperationalLedgerPoster::class)->syncSale($sale);
+        }
+
     }
 
     private static function normalizeItems(array $items): array
@@ -765,6 +771,7 @@ class EditSale extends EditRecord
         PaymentLedgerService::syncSaleTotals($this->record->fresh());
 
         $this->record = $this->record->fresh(['items.variants', 'payments']);
+        app(OperationalLedgerPoster::class)->syncSale($this->record);
         $this->form->fill($this->mutateFormDataBeforeFill($this->record->attributesToArray()));
 
         Notification::make()->success()->title('Payment deleted.')->send();

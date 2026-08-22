@@ -2,9 +2,11 @@
 
 return [
 
-    'name' => 'Flowdesk',
+    'name' => 'Strive Uniform and Bookshop',
 
     'logo' => 'images/flowdesk-logo.svg',
+
+    'logo_dark' => 'images/flowdesk-logo-dark.svg',
 
     'icon' => 'images/flowdesk-icon.svg',
 
@@ -19,9 +21,9 @@ return [
     'legacy_merchant_email' => 'info@zgngreenpvt.com',
 
     'colors' => [
-        'primary' => '#6366f1',
-        'secondary' => '#64748b',
-        'accent' => '#818cf8',
+        'primary' => '#1B4F72',
+        'secondary' => '#C4A35A',
+        'accent' => '#2E6A96',
         'sidebar_dark' => '#0a0a0a',
         'shell_bg' => '#000000',
         'card_bg' => '#0b0f14',
@@ -36,10 +38,10 @@ return [
         'surface' => '#111827',
         'text' => '#e2e8f0',
         'muted' => '#94a3b8',
-        'active' => '#6366f1',
-        'gradient_start' => '#6366f1',
-        'gradient_mid' => '#7c3aed',
-        'gradient_end' => '#818cf8',
+        'active' => '#1B4F72',
+        'gradient_start' => '#1B4F72',
+        'gradient_mid' => '#15405C',
+        'gradient_end' => '#C4A35A',
         'icon' => '#94a3b8',
         'header' => '#64748b',
     ],

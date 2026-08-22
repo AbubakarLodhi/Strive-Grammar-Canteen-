@@ -50,11 +50,15 @@ class UserPanelProvider extends PanelProvider
                 return asset(config('branding.logo'));
             })
             ->brandName(fn () => Filament::auth()->user()?->merchant?->name ?? config('branding.name'))
-            ->darkModeBrandLogo(asset('images/flowdesk-logo-dark.svg'))
+            ->brandLogoHeight('2.25rem')
+            ->darkModeBrandLogo(asset(config('branding.logo_dark')))
             ->viteTheme('resources/css/filament/merchant/theme.css')
             ->navigationGroups([
-                'Procurement',
+                'Sales',
+                'Purchase',
                 'Inventory',
+                'Finance',
+                'HR',
                 'Assets',
                 'Reportings',
                 'Configurations',

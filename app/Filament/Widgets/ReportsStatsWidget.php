@@ -4,11 +4,13 @@ namespace App\Filament\Widgets;
 
 use App\Models\CashFlow;
 use App\Models\Expense;
+use App\Models\LedgerAccount;
 use App\Models\Merchant;
 use App\Models\Payroll;
 use App\Models\Purchase;
 use App\Models\Sale;
 use App\Models\User;
+use App\Services\Finance\FinanceLedger;
 use Filament\Facades\Filament;
 use Filament\Widgets\Concerns\InteractsWithPageFilters;
 use Filament\Widgets\Widget;
@@ -1179,6 +1181,9 @@ class ReportsStatsWidget extends Widget
                 'cash_flow_payable' => 0,
                 'net_cash_movement' => 0,
                 'current_total_funds' => 0,
+                'cash_ledger' => 0,
+                'ubl_ledger' => 0,
+                'bank_ledgers' => [],
             ];
         }
 
@@ -1264,6 +1269,27 @@ class ReportsStatsWidget extends Widget
             'cash_flow_payable' => $cashFlowPayable,
             'net_cash_movement' => $netCashMovement,
             'current_total_funds' => $openingTotalFunds + $netCashMovement,
+            'cash_ledger' => (float) (LedgerAccount::query()
+                ->where('merchant_id', $merchantId)
+                ->where('code', FinanceLedger::CASH_ACCOUNT_CODE)
+                ->first()
+                ?->postedBalance() ?? 0),
+            'ubl_ledger' => (float) (LedgerAccount::query()
+                ->where('merchant_id', $merchantId)
+                ->where('code', FinanceLedger::BANK_ACCOUNT_CODE)
+                ->first()
+                ?->postedBalance() ?? 0),
+            'bank_ledgers' => LedgerAccount::query()
+                ->where('merchant_id', $merchantId)
+                ->where('is_bank', true)
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->get()
+                ->map(fn (LedgerAccount $account): array => [
+                    'name' => $account->name,
+                    'balance' => (float) $account->postedBalance(),
+                ])
+                ->all(),
         ];
     }
 }

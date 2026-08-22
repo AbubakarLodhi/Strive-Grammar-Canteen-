@@ -40,7 +40,7 @@ class DemoExitController extends Controller
         $flashKey = $notice === 'demo_expired' ? 'demo_expired' : 'status';
 
         return redirect()
-            ->route('landing', ['notice' => $notice])
+            ->route('filament.merchant.auth.login', ['notice' => $notice])
             ->with($flashKey, $message);
     }
 }

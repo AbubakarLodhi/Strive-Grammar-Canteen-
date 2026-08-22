@@ -5,7 +5,7 @@
     @php
         $merchant = $record->merchant;
         $settings = $merchant?->settings;
-        $themePrimary = $settings?->primary_color ?? config('branding.colors.primary', '#6366f1');
+        $themePrimary = $settings?->primary_color ?? config('branding.colors.primary', '#1B4F72');
         $statusLabel = $record->status?->label() ?? (string) $record->status;
         $conditionLabel = $record->condition?->label() ?? (string) $record->condition;
         $formatMoney = fn (?float $amount): string => $amount === null ? '—' : 'Rs '.number_format($amount, 2);
@@ -94,7 +94,7 @@
             border-radius: 999px;
             font-size: 11px;
             font-weight: 600;
-            background: #eef2ff;
+            background: #E8EEF4;
             color: #3730a3;
         }
 

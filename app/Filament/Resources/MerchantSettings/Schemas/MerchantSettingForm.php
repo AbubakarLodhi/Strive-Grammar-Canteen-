@@ -36,12 +36,12 @@ class MerchantSettingForm
                 ->schema([
                     ColorPicker::make('primary_color')
                         ->label('Primary')
-                        ->default('#6366f1')
+                        ->default('#1B4F72')
                         ->required(),
 
                     ColorPicker::make('secondary_color')
                         ->label('Secondary')
-                        ->default('#64748B')
+                        ->default('#C4A35A')
                         ->required(),
 
                     ColorPicker::make('warning_color')
@@ -79,7 +79,7 @@ class MerchantSettingForm
                         ->dehydrated(false),
 
                     TextInput::make('cash_in_bank')
-                        ->label('Cash In Bank')
+                        ->label('Opening UBL Bank')
                         ->prefix('PKR')
                         ->numeric()
                         ->default(0)

@@ -5,6 +5,9 @@ namespace App\Filament\Resources\Purchases\Pages;
 use App\Enums\AttachmentMetaType;
 use App\Enums\AttachmentType;
 use App\Filament\Resources\Purchases\PurchaseResource;
+use App\Models\Branch;
+use App\Models\Merchant;
+use App\Services\Finance\OperationalLedgerPoster;
 use App\Services\Notifications\NotificationDispatcher;
 use App\Services\PaymentLedgerService;
 use Filament\Facades\Filament;
@@ -39,6 +42,8 @@ class CreatePurchase extends CreateRecord
                 'error' => $exception->getMessage(),
             ]);
         }
+
+        app(OperationalLedgerPoster::class)->syncPurchase($purchase);
     }
 
     protected function handleRecordCreation(array $data): Model
@@ -59,7 +64,7 @@ class CreatePurchase extends CreateRecord
              ----------------------------- */
             $panel = Filament::getCurrentPanel();
             $guard = $panel?->getAuthGuard();
-            $user  = Filament::auth()->user();
+            $user = Filament::auth()->user();
 
             $data['created_by'] = ($guard === 'staff' && $user)
                 ? $user->id
@@ -88,7 +93,7 @@ class CreatePurchase extends CreateRecord
                 $totalTax += $taxAmount;
             }
 
-            $data['subtotal']     = $subtotal;
+            $data['subtotal'] = $subtotal;
             $data['total_amount'] = $subtotal - $totalDiscount + $totalTax;
             self::applyPaymentFields($data);
 
@@ -110,7 +115,7 @@ class CreatePurchase extends CreateRecord
              ----------------------------- */
             foreach ($items as $item) {
 
-                $branch = \App\Models\Branch::select('id', 'business_id')
+                $branch = Branch::select('id', 'business_id')
                     ->find($item['branch_id']);
 
                 if (! $branch) {
@@ -119,22 +124,22 @@ class CreatePurchase extends CreateRecord
 
                 $purchaseItem = $purchase->items()->create([
                     'business_id' => $branch->business_id,
-                    'branch_id'   => $branch->id,
-                    'product_id'  => $item['product_id'],
-                    'quantity'    => $item['quantity'],
-                    'unit_price'  => $item['unit_price'],
-                    'line_total'  => $item['line_total'],
-                    'discount'    => $item['discount'] ?? 0,
-                    'tax'         => $item['tax'] ?? 0,
+                    'branch_id' => $branch->id,
+                    'product_id' => $item['product_id'],
+                    'quantity' => $item['quantity'],
+                    'unit_price' => $item['unit_price'],
+                    'line_total' => $item['line_total'],
+                    'discount' => $item['discount'] ?? 0,
+                    'tax' => $item['tax'] ?? 0,
                 ]);
 
                 // ✅ MATCH SALE
                 if (! empty($item['product_variant_id'])) {
                     $purchaseItem->variants()->create([
                         'product_variant_id' => $item['product_variant_id'],
-                        'quantity'           => $item['quantity'],
-                        'unit_price'         => $item['unit_price'],
-                        'line_total'         => $item['line_total'],
+                        'quantity' => $item['quantity'],
+                        'unit_price' => $item['unit_price'],
+                        'line_total' => $item['line_total'],
                     ]);
                 }
             }
@@ -145,7 +150,7 @@ class CreatePurchase extends CreateRecord
             $state = $this->form->getRawState();
 
             if (array_key_exists('merchant_logo', $state)) {
-                $merchant = Filament::auth()->user() instanceof \App\Models\Merchant
+                $merchant = Filament::auth()->user() instanceof Merchant
                     ? Filament::auth()->user()
                     : Filament::auth()->user()?->merchant;
 
@@ -154,9 +159,9 @@ class CreatePurchase extends CreateRecord
 
                     $merchant->logo()->create([
                         'merchant_id' => $merchant->id,
-                        'type'        => AttachmentType::IMAGE,
-                        'meta_type'   => AttachmentMetaType::MERCHANT_LOGO,
-                        'photo_url'   => $logo,
+                        'type' => AttachmentType::IMAGE,
+                        'meta_type' => AttachmentMetaType::MERCHANT_LOGO,
+                        'photo_url' => $logo,
                     ]);
                 }
             }

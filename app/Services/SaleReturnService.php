@@ -3,9 +3,10 @@
 namespace App\Services;
 
 use App\Models\Sale;
-use App\Models\SaleReturn;
 use App\Models\SaleItem;
 use App\Models\SaleItemVariant;
+use App\Models\SaleReturn;
+use App\Services\Finance\OperationalLedgerPoster;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -75,14 +76,14 @@ class SaleReturnService
                 $returnItems[] = [
                     'data' => [
                         'sale_item_id' => $saleItem->id,
-                        'business_id'  => $saleItem->business_id,
-                        'branch_id'    => $saleItem->branch_id,
-                        'product_id'   => $saleItem->product_id,
-                        'quantity'     => $returnQty,
-                        'unit_price'   => $saleItem->unit_price,
-                        'line_total'   => $lineTotal,
-                        'discount'     => $saleItem->discount,
-                        'tax'          => $saleItem->tax,
+                        'business_id' => $saleItem->business_id,
+                        'branch_id' => $saleItem->branch_id,
+                        'product_id' => $saleItem->product_id,
+                        'quantity' => $returnQty,
+                        'unit_price' => $saleItem->unit_price,
+                        'line_total' => $lineTotal,
+                        'discount' => $saleItem->discount,
+                        'tax' => $saleItem->tax,
                     ],
                     'variants' => $variantAllocations,
                 ];
@@ -98,16 +99,16 @@ class SaleReturnService
 
             $return = SaleReturn::create([
                 'merchant_id' => $sale->merchant_id,
-                'sale_id'     => $sale->id,
+                'sale_id' => $sale->id,
                 'customer_id' => $sale->customer_id,
-                'return_no'   => 'RET-' . now()->format('YmdHis') . '-' . Str::upper(Str::random(4)),
+                'return_no' => 'RET-'.now()->format('YmdHis').'-'.Str::upper(Str::random(4)),
                 'return_date' => $data['return_date'],
-                'subtotal'    => $subtotal,
+                'subtotal' => $subtotal,
                 'total_discount' => $totalDiscount,
-                'total_tax'   => $totalTax,
+                'total_tax' => $totalTax,
                 'total_amount' => $subtotal - $totalDiscount + $totalTax,
-                'reason'      => $data['reason'],
-                'created_by'  => auth()->id(),
+                'reason' => $data['reason'],
+                'created_by' => auth()->id(),
             ]);
 
             foreach ($returnItems as $returnItem) {
@@ -128,6 +129,7 @@ class SaleReturnService
             }
 
             self::recalculateSaleTotals($sale);
+            app(OperationalLedgerPoster::class)->syncSaleReturn($return->fresh(['sale.payments']));
         });
     }
 
@@ -147,6 +149,7 @@ class SaleReturnService
             }
 
             $sale = $return->sale;
+            app(OperationalLedgerPoster::class)->forget($return);
             $return->delete();
 
             if ($sale) {

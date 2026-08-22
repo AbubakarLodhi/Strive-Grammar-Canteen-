@@ -24,10 +24,6 @@ class DemoMerchantAccess
 
     private function ensurePermissionModulesExist(): void
     {
-        if (PermissionModule::query()->exists()) {
-            return;
-        }
-
         (new PermissionsModulesSeeder)->run();
     }
 

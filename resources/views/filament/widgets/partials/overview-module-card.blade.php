@@ -168,6 +168,21 @@
             <p class="mt-4 text-2xl font-semibold text-slate-900 dark:text-slate-100">{{ number_format($funds['current_total_funds'], 2) }}</p>
             <div class="mt-4 space-y-2 text-sm text-slate-700 dark:text-slate-300">
                 <div class="flex items-center justify-between">
+                    <span>Cash in Hand (ledger)</span>
+                    <span class="font-medium text-slate-900 dark:text-slate-100">{{ number_format($funds['cash_ledger'] ?? 0, 2) }}</span>
+                </div>
+                @forelse ($funds['bank_ledgers'] ?? [] as $bank)
+                <div class="flex items-center justify-between">
+                    <span>{{ $bank['name'] }} (ledger)</span>
+                    <span class="font-medium text-slate-900 dark:text-slate-100">{{ number_format($bank['balance'], 2) }}</span>
+                </div>
+                @empty
+                <div class="flex items-center justify-between">
+                    <span>UBL Bank (ledger)</span>
+                    <span class="font-medium text-slate-900 dark:text-slate-100">{{ number_format($funds['ubl_ledger'] ?? 0, 2) }}</span>
+                </div>
+                @endforelse
+                <div class="flex items-center justify-between">
                     <span>Opening Funds</span>
                     <span class="font-medium text-slate-900 dark:text-slate-100">{{ number_format($funds['opening_total_funds'], 2) }}</span>
                 </div>

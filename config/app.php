@@ -13,7 +13,7 @@ return [
     |
     */
 
-    'name' => env('APP_NAME', 'Flowdesk'),
+    'name' => env('APP_NAME', 'Strive Uniform and Bookshop'),
 
     /*
     |--------------------------------------------------------------------------

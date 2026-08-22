@@ -10,13 +10,16 @@ use App\Filament\Resources\Expenses\Schemas\ExpenseForm;
 use App\Filament\Resources\Expenses\Schemas\ExpenseInfolist;
 use App\Filament\Resources\Expenses\Tables\ExpensesTable;
 use App\Models\Expense;
+use App\Models\Merchant;
 use App\Models\PermissionModule;
+use App\Models\User;
 use BackedEnum;
 use Filament\Facades\Filament;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 class ExpenseResource extends Resource
 {
@@ -24,9 +27,9 @@ class ExpenseResource extends Resource
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::Banknotes;
 
-    protected static string|\UnitEnum|null $navigationGroup = 'Procurement';
+    protected static string|\UnitEnum|null $navigationGroup = 'Finance';
 
-    protected static ?int $navigationSort = 7;
+    protected static ?int $navigationSort = 5;
 
     protected static ?string $recordTitleAttribute = 'expense_no';
 
@@ -47,15 +50,15 @@ class ExpenseResource extends Resource
         return $user->hasPermissionTo('expenses.view', $guard);
     }
 
-    public static function getEloquentQuery(): \Illuminate\Database\Eloquent\Builder
+    public static function getEloquentQuery(): Builder
     {
         $query = parent::getEloquentQuery();
-        $user  = Filament::auth()->user();
+        $user = Filament::auth()->user();
 
         $merchantId = match (true) {
-            $user instanceof \App\Models\Merchant => $user->id,
-            $user instanceof \App\Models\User     => $user->merchant_id,
-            default                               => null,
+            $user instanceof Merchant => $user->id,
+            $user instanceof User => $user->merchant_id,
+            default => null,
         };
 
         if (! $merchantId) {
@@ -63,21 +66,18 @@ class ExpenseResource extends Resource
         }
 
         // 🟢 Merchant → all expenses
-        if ($user instanceof \App\Models\Merchant) {
+        if ($user instanceof Merchant) {
             return $query->where('merchant_id', $merchantId);
         }
 
         // 🔵 Staff → pivot-based scope
         return $query
             ->where('merchant_id', $merchantId)
-            ->whereHas('business.users', fn ($q) =>
-            $q->where('users.id', $user->id)
+            ->whereHas('business.users', fn ($q) => $q->where('users.id', $user->id)
             )
-            ->whereHas('branch.users', fn ($q) =>
-            $q->where('users.id', $user->id)
+            ->whereHas('branch.users', fn ($q) => $q->where('users.id', $user->id)
             );
     }
-
 
     public static function form(Schema $schema): Schema
     {

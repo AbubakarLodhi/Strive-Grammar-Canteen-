@@ -185,7 +185,7 @@
                     <tr>
                         <td colspan="2" style="padding-top:8px;">
                             <div style="
-                            background:#6366f1;
+                            background:#1B4F72;
                             color:#ffffff;
                             padding:12px;
                             border-radius:8px;

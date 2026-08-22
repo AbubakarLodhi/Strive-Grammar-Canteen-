@@ -22,7 +22,7 @@ class SaleReturnResource extends Resource
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::ArrowUturnRight;
 
-    protected static string|\UnitEnum|null $navigationGroup = 'Procurement';
+    protected static string|\UnitEnum|null $navigationGroup = 'Sales';
 
     protected static ?int $navigationSort = 2;
 
@@ -66,8 +66,8 @@ class SaleReturnResource extends Resource
     {
         return [
             'index' => ListSaleReturns::route('/'),
-           // 'create' => CreateSaleReturn::route('/create'),
-           // 'edit' => EditSaleReturn::route('/{record}/edit'),
+            // 'create' => CreateSaleReturn::route('/create'),
+            // 'edit' => EditSaleReturn::route('/{record}/edit'),
         ];
     }
 }

@@ -32,7 +32,7 @@
         $leaders = $leaders ?? ['customers' => [], 'vendors' => [], 'variants' => []];
         $credit = $credit ?? ['receivable_total' => 0, 'payable_total' => 0, 'top_customers' => [], 'top_vendors' => []];
         $expenses = $expenses ?? ['total_expenses' => 0, 'total_amount' => 0, 'avg_expense' => 0];
-        $funds = $funds ?? ['opening_total_funds' => 0, 'sales_cash_inflow' => 0, 'purchases_cash_outflow' => 0, 'expenses_outflow' => 0, 'payroll_outflow' => 0, 'cash_flow_net' => 0, 'cash_flow_received' => 0, 'cash_flow_paid' => 0, 'cash_flow_receivable' => 0, 'cash_flow_payable' => 0, 'net_cash_movement' => 0, 'current_total_funds' => 0];
+        $funds = $funds ?? ['opening_total_funds' => 0, 'sales_cash_inflow' => 0, 'purchases_cash_outflow' => 0, 'expenses_outflow' => 0, 'payroll_outflow' => 0, 'cash_flow_net' => 0, 'cash_flow_received' => 0, 'cash_flow_paid' => 0, 'cash_flow_receivable' => 0, 'cash_flow_payable' => 0, 'net_cash_movement' => 0, 'current_total_funds' => 0, 'cash_ledger' => 0, 'ubl_ledger' => 0];
         $profitLoss = $profitLoss ?? ['gross_profit' => 0, 'net_profit' => 0, 'net_sales' => 0, 'net_purchases' => 0, 'expenses' => 0, 'payrolls' => 0, 'sales_returns' => 0, 'purchase_returns' => 0];
         $filterPeriodLabel = $filterPeriodLabel ?? 'All time';
         $barMax = max($seriesAll ?: [1]);

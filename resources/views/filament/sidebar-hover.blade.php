@@ -198,31 +198,31 @@
     }
 
     .sidebar-pin-btn:focus-visible {
-        box-shadow: 0 0 0 2px #6366f130;
-        border-color: #6366f1;
+        box-shadow: 0 0 0 2px #1B4F7230;
+        border-color: #1B4F72;
     }
 
     .sidebar-pin-btn.pinned {
-        background: rgba(99, 102, 241, 0.08);
-        border-color: rgba(99, 102, 241, 0.45);
-        color: #6366f1;
+        background: rgba(27, 79, 114, 0.08);
+        border-color: rgba(27, 79, 114, 0.45);
+        color: #1B4F72;
     }
 
     .sidebar-pin-btn.pinned:hover {
-        background: rgba(99, 102, 241, 0.14);
-        border-color: #6366f1;
+        background: rgba(27, 79, 114, 0.14);
+        border-color: #1B4F72;
         box-shadow: none;
     }
 
     html.dark .sidebar-pin-btn.pinned {
-        background: rgba(99, 102, 241, 0.15);
-        border-color: rgba(129, 140, 248, 0.45);
-        color: #a5b4fc;
+        background: rgba(27, 79, 114, 0.15);
+        border-color: rgba(46, 106, 150, 0.45);
+        color: #C4A35A;
     }
 
     html.dark .sidebar-pin-btn.pinned:hover {
-        background: rgba(99, 102, 241, 0.22);
-        border-color: #818cf8;
+        background: rgba(27, 79, 114, 0.22);
+        border-color: #2E6A96;
     }
 </style>
 

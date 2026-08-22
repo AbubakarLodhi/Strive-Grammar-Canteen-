@@ -32,9 +32,9 @@ class CashFlowResource extends Resource
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::ArrowsRightLeft;
 
-    protected static string|\UnitEnum|null $navigationGroup = 'Procurement';
+    protected static string|\UnitEnum|null $navigationGroup = 'Finance';
 
-    protected static ?int $navigationSort = 8;
+    protected static ?int $navigationSort = 6;
 
     protected static ?string $recordTitleAttribute = 'reference_no';
 

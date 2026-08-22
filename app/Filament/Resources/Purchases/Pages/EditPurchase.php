@@ -2,39 +2,46 @@
 
 namespace App\Filament\Resources\Purchases\Pages;
 
-use App\Enums\AttachmentMetaType;
-use App\Enums\AttachmentType;
 use App\Filament\Resources\Purchases\PurchaseResource;
+use App\Models\Branch;
 use App\Models\Payment;
+use App\Services\Finance\OperationalLedgerPoster;
 use App\Services\PaymentLedgerService;
 use Filament\Actions\Action;
 use Filament\Actions\DeleteAction;
-use Filament\Notifications\Notification;
 use Filament\Actions\ViewAction;
 use Filament\Facades\Filament;
+use Filament\Notifications\Notification;
 use Filament\Resources\Pages\EditRecord;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class EditPurchase extends EditRecord
 {
     protected static string $resource = PurchaseResource::class;
+
     private const PAGINATED_ITEMS_THRESHOLD = 75;
+
     private const ITEMS_PER_PAGE = 25;
 
     protected bool $isPartiallyReturned = false;
-    protected float $paymentDelta = 0.0;
-    protected ?string $paymentDate = null;
-    protected string $paymentEntryType = 'payment';
-    protected bool $usesPaginatedItems = false;
-    public int $itemsPage = 1;
 
+    protected float $paymentDelta = 0.0;
+
+    protected ?string $paymentDate = null;
+
+    protected string $paymentEntryType = 'payment';
+
+    protected bool $usesPaginatedItems = false;
+
+    public int $itemsPage = 1;
 
     public function getTitle(): string
     {
         $name = (string) ($this->record?->name ?? '');
 
-        return 'Edit ' . \Illuminate\Support\Str::limit($name, 30);
+        return 'Edit '.Str::limit($name, 30);
     }
 
     protected function getRedirectUrl(): string
@@ -75,9 +82,6 @@ class EditPurchase extends EditRecord
 
         return $data;
     }
-
-
-
 
     protected function getHeaderActions(): array
     {
@@ -167,7 +171,7 @@ class EditPurchase extends EditRecord
             $totalTax += $taxAmount;
         }
 
-        $data['subtotal']     = $subtotal;
+        $data['subtotal'] = $subtotal;
         $data['total_amount'] = $subtotal - $totalDiscount + $totalTax;
         $data['current_payment_amount'] = $currentPaymentAmount;
         $this->preparePaymentDelta($data, (float) $data['total_amount']);
@@ -177,7 +181,6 @@ class EditPurchase extends EditRecord
 
         return $data;
     }
-
 
     protected function afterSave(): void
     {
@@ -196,7 +199,7 @@ class EditPurchase extends EditRecord
 
                 foreach ($items as $item) {
 
-                    $branch = \App\Models\Branch::select('id', 'business_id')
+                    $branch = Branch::select('id', 'business_id')
                         ->find($item['branch_id']);
 
                     if (! $branch) {
@@ -205,22 +208,22 @@ class EditPurchase extends EditRecord
 
                     $purchaseItem = $this->record->items()->create([
                         'business_id' => $branch->business_id,
-                        'branch_id'   => $branch->id,
-                        'product_id'  => $item['product_id'],
-                        'quantity'    => $item['quantity'],
-                        'unit_price'  => $item['unit_price'],
-                        'line_total'  => $item['line_total'],
-                        'discount'    => $item['discount'] ?? 0,
-                        'tax'         => $item['tax'] ?? 0,
+                        'branch_id' => $branch->id,
+                        'product_id' => $item['product_id'],
+                        'quantity' => $item['quantity'],
+                        'unit_price' => $item['unit_price'],
+                        'line_total' => $item['line_total'],
+                        'discount' => $item['discount'] ?? 0,
+                        'tax' => $item['tax'] ?? 0,
                     ]);
 
                     // ✅ MATCH SALE
                     if (! empty($item['product_variant_id'])) {
                         $purchaseItem->variants()->create([
                             'product_variant_id' => $item['product_variant_id'],
-                            'quantity'           => $item['quantity'],
-                            'unit_price'         => $item['unit_price'],
-                            'line_total'         => $item['line_total'],
+                            'quantity' => $item['quantity'],
+                            'unit_price' => $item['unit_price'],
+                            'line_total' => $item['line_total'],
                         ]);
                     }
                 }
@@ -239,6 +242,11 @@ class EditPurchase extends EditRecord
                 );
             }
         });
+
+        $purchase = $this->record->fresh(['payments']);
+        if ($purchase) {
+            app(OperationalLedgerPoster::class)->syncPurchase($purchase);
+        }
     }
 
     public function previousItemsPage(): void
@@ -298,7 +306,7 @@ class EditPurchase extends EditRecord
                     continue;
                 }
 
-                $branch = \App\Models\Branch::select('id', 'business_id')
+                $branch = Branch::select('id', 'business_id')
                     ->find($item['branch_id']);
 
                 if (! $branch) {
@@ -554,6 +562,7 @@ class EditPurchase extends EditRecord
                 ->danger()
                 ->title('Invalid payment selected for reversal.')
                 ->send();
+
             return;
         }
 
@@ -561,6 +570,7 @@ class EditPurchase extends EditRecord
         PaymentLedgerService::syncPurchaseTotals($this->record->fresh());
 
         $this->record = $this->record->fresh(['items.variants', 'payments']);
+        app(OperationalLedgerPoster::class)->syncPurchase($this->record);
         $this->form->fill($this->mutateFormDataBeforeFill($this->record->attributesToArray()));
 
         Notification::make()
@@ -568,7 +578,4 @@ class EditPurchase extends EditRecord
             ->title('Payment deleted.')
             ->send();
     }
-
-
-
 }

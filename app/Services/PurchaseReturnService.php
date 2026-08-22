@@ -6,6 +6,7 @@ use App\Models\Purchase;
 use App\Models\PurchaseItem;
 use App\Models\PurchaseItemVariant;
 use App\Models\PurchaseReturn;
+use App\Services\Finance\OperationalLedgerPoster;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -75,14 +76,14 @@ class PurchaseReturnService
                 $returnItems[] = [
                     'data' => [
                         'purchase_item_id' => $purchaseItem->id,
-                        'business_id'  => $purchaseItem->business_id,
-                        'branch_id'    => $purchaseItem->branch_id,
-                        'product_id'   => $purchaseItem->product_id,
-                        'quantity'     => $returnQty,
-                        'unit_price'   => $purchaseItem->unit_price,
-                        'line_total'   => $lineTotal,
-                        'discount'     => $purchaseItem->discount,
-                        'tax'          => $purchaseItem->tax,
+                        'business_id' => $purchaseItem->business_id,
+                        'branch_id' => $purchaseItem->branch_id,
+                        'product_id' => $purchaseItem->product_id,
+                        'quantity' => $returnQty,
+                        'unit_price' => $purchaseItem->unit_price,
+                        'line_total' => $lineTotal,
+                        'discount' => $purchaseItem->discount,
+                        'tax' => $purchaseItem->tax,
                     ],
                     'variants' => $variantAllocations,
                 ];
@@ -99,14 +100,14 @@ class PurchaseReturnService
             $return = PurchaseReturn::create([
                 'merchant_id' => $purchase->merchant_id,
                 'purchase_id' => $purchase->id,
-                'return_no'   => 'PRET-' . now()->format('YmdHis') . '-' . Str::upper(Str::random(4)),
+                'return_no' => 'PRET-'.now()->format('YmdHis').'-'.Str::upper(Str::random(4)),
                 'return_date' => $data['return_date'],
-                'subtotal'    => $subtotal,
+                'subtotal' => $subtotal,
                 'total_discount' => $totalDiscount,
-                'total_tax'   => $totalTax,
+                'total_tax' => $totalTax,
                 'total_amount' => $subtotal - $totalDiscount + $totalTax,
-                'reason'      => $data['reason'],
-                'created_by'  => auth()->id(),
+                'reason' => $data['reason'],
+                'created_by' => auth()->id(),
             ]);
 
             foreach ($returnItems as $returnItem) {
@@ -127,6 +128,7 @@ class PurchaseReturnService
             }
 
             self::recalculatePurchaseTotals($purchase);
+            app(OperationalLedgerPoster::class)->syncPurchaseReturn($return->fresh(['purchase.payments']));
         });
     }
 
@@ -146,6 +148,7 @@ class PurchaseReturnService
             }
 
             $purchase = $return->purchase;
+            app(OperationalLedgerPoster::class)->forget($return);
             $return->delete();
 
             if ($purchase) {

@@ -3,14 +3,14 @@
 namespace App\Filament\Resources\Payrolls\Pages;
 
 use App\Filament\Resources\Payrolls\PayrollResource;
+use App\Models\Merchant;
 use App\Models\Payroll;
+use App\Models\User;
+use App\Services\Finance\OperationalLedgerPoster;
+use Filament\Facades\Filament;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
-use Filament\Facades\Filament;
-use App\Models\User;
-use App\Models\Merchant;
 use Illuminate\Validation\ValidationException;
-
 
 class CreatePayroll extends CreateRecord
 {
@@ -21,7 +21,6 @@ class CreatePayroll extends CreateRecord
         return $this->getResource()::getUrl('index');
     }
 
-
     protected function mutateFormDataBeforeCreate(array $data): array
     {
         $data['allowances'] = $data['allowances'] ?? [];
@@ -29,10 +28,10 @@ class CreatePayroll extends CreateRecord
 
         $authUser = Filament::auth()->user();
 
-        if ($authUser instanceof \App\Models\User) {
+        if ($authUser instanceof User) {
             $merchantId = $authUser->merchant_id;
             $data['created_by'] = $authUser->id;
-        } elseif ($authUser instanceof \App\Models\Merchant) {
+        } elseif ($authUser instanceof Merchant) {
             $merchantId = $authUser->id;
             $data['created_by'] = null;
         } else {
@@ -48,7 +47,7 @@ class CreatePayroll extends CreateRecord
 
         $data['merchant_id'] = $merchantId;
 
-        $exists = \App\Models\Payroll::query()
+        $exists = Payroll::query()
             ->where('merchant_id', $merchantId)
             ->where('user_id', $data['user_id'])
             ->where('period_month', $data['period_month'])
@@ -70,7 +69,6 @@ class CreatePayroll extends CreateRecord
         return $data;
     }
 
-
     protected function mutateFormDataBeforeFill(array $data): array
     {
         // Pre-fill user_id from query param if passed
@@ -79,5 +77,12 @@ class CreatePayroll extends CreateRecord
         }
 
         return $data;
+    }
+
+    protected function afterCreate(): void
+    {
+        if ($this->record instanceof Payroll) {
+            app(OperationalLedgerPoster::class)->syncPayroll($this->record);
+        }
     }
 }

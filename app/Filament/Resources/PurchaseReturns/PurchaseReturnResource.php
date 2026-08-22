@@ -17,12 +17,12 @@ class PurchaseReturnResource extends Resource
 {
     protected static ?string $model = PurchaseReturn::class;
 
-
     protected static string|BackedEnum|null $navigationIcon = Heroicon::ArrowUturnLeft;
 
-    protected static string|\UnitEnum|null $navigationGroup = 'Procurement';
+    protected static string|\UnitEnum|null $navigationGroup = 'Purchase';
 
-    protected static ?int $navigationSort = 5;
+    protected static ?int $navigationSort = 2;
+
     protected static ?string $recordTitleAttribute = 'PurchaseReturn';
 
     public static function canViewAny(): bool
@@ -41,6 +41,7 @@ class PurchaseReturnResource extends Resource
         // 🔐 Permission gate
         return $user->hasPermissionTo('purchases.view', $guard);
     }
+
     public static function form(Schema $schema): Schema
     {
         return $schema;

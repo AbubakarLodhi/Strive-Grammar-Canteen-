@@ -1,6 +1,6 @@
 {
   "resources/css/app.css": {
-    "file": "assets/app-BrgChlo5.css",
+    "file": "assets/app-BEECsGMZ.css",
     "src": "resources/css/app.css",
     "isEntry": true,
     "name": "app",
@@ -9,7 +9,7 @@
     ]
   },
   "resources/css/filament/merchant/theme.css": {
-    "file": "assets/theme-B_fSr6oC.css",
+    "file": "assets/theme-CLvbuhZo.css",
     "src": "resources/css/filament/merchant/theme.css",
     "isEntry": true,
     "name": "theme",
@@ -17,25 +17,10 @@
       "theme.css"
     ]
   },
-  "resources/css/landing.css": {
-    "file": "assets/landing-CFTeyKAC.css",
-    "src": "resources/css/landing.css",
-    "isEntry": true,
-    "name": "landing",
-    "names": [
-      "landing.css"
-    ]
-  },
   "resources/js/app.js": {
     "file": "assets/app-CAiCLEjY.js",
     "name": "app",
     "src": "resources/js/app.js",
-    "isEntry": true
-  },
-  "resources/js/landing.js": {
-    "file": "assets/landing-CKRfbEWQ.js",
-    "name": "landing",
-    "src": "resources/js/landing.js",
     "isEntry": true
   }
 }

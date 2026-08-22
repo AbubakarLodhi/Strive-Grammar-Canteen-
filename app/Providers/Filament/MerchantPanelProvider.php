@@ -66,8 +66,8 @@ class MerchantPanelProvider extends PanelProvider
                 return asset('storage/'.$path);
             })
             ->brandName(fn () => Filament::auth()->user()?->name ?? config('branding.name'))
-            ->brandLogoHeight('2.5rem')
-            ->darkModeBrandLogo(asset('images/flowdesk-logo-dark.svg'))
+            ->brandLogoHeight('2.25rem')
+            ->darkModeBrandLogo(asset(config('branding.logo_dark')))
             ->userMenuItems([
                 Action::make('editProfile')
                     ->label('Edit profile')
@@ -103,8 +103,11 @@ class MerchantPanelProvider extends PanelProvider
                     ]);
                 })
             ->navigationGroups([
-                'Procurement',
+                'Sales',
+                'Purchase',
                 'Inventory',
+                'Finance',
+                'HR',
                 'Assets',
                 'Reportings',
                 'Configurations',

@@ -4,19 +4,19 @@
 @source '../../../../resources/views/filament/**/*';
 
 /* --------------------------------------------
- | Flowdesk — dark purple theme foundation
+ | Strive Uniform and Bookshop — navy theme foundation
  |--------------------------------------------- */
 :root {
-    --flowdesk-purple: #6366f1;
-    --flowdesk-purple-deep: #4f46e5;
-    --flowdesk-purple-light: #818cf8;
-    --flowdesk-accent-gradient: linear-gradient(135deg, #6366f1 0%, #7c3aed 62%, #818cf8 100%);
+    --flowdesk-purple: #1B4F72;
+    --flowdesk-purple-deep: #15405C;
+    --flowdesk-purple-light: #2E6A96;
+    --flowdesk-accent-gradient: linear-gradient(135deg, #1B4F72 0%, #C4A35A 62%, #2E6A96 100%);
     --flowdesk-shell-bg: #000000;
     --flowdesk-card-bg: #0b0f14;
     --flowdesk-sidebar-bg: #0a0a0a;
-    --flowdesk-sidebar-blue: #6366f1;
-    --flowdesk-sidebar-green: #7c3aed;
-    --flowdesk-sidebar-teal: #818cf8;
+    --flowdesk-sidebar-blue: #1B4F72;
+    --flowdesk-sidebar-green: #C4A35A;
+    --flowdesk-sidebar-teal: #2E6A96;
     --flowdesk-sidebar-icon: #94a3b8;
     --flowdesk-sidebar-text: #e2e8f0;
     --flowdesk-sidebar-header: #64748b;
@@ -366,15 +366,14 @@ body.fi-panel-user .fi-main-ctn .fi-ta-ctn .fi-ta-content-ctn {
  |---------------------------------------------
  */
 .flowdesk-auth-layout {
+    position: relative;
+    isolation: isolate;
     min-height: 100vh;
     display: grid;
-    grid-template-columns: minmax(0, 1.05fr) minmax(420px, 0.95fr);
+    grid-template-columns: minmax(0, 1.15fr) minmax(440px, 0.85fr);
     align-items: stretch;
     color-scheme: light;
-    background:
-        radial-gradient(circle at 12% 18%, rgba(99, 102, 241, 0.1), transparent 42%),
-        radial-gradient(circle at 88% 12%, rgba(79, 70, 229, 0.07), transparent 36%),
-        #f1f5f9;
+    background: #eef3f7;
 }
 
 .flowdesk-auth-layout .flowdesk-auth-visual {
@@ -382,20 +381,35 @@ body.fi-panel-user .fi-main-ctn .fi-ta-ctn .fi-ta-content-ctn {
     align-items: center;
     justify-content: center;
     min-height: 100vh;
-    padding: 34px 0 34px 40px;
-    overflow: hidden;
+    padding: 48px 24px 48px 48px;
 }
 
-.flowdesk-auth-layout .flowdesk-auth-visual-image,
-.flowdesk-auth-layout .flowdesk-login-visual {
-    width: min(100%, 520px);
+.flowdesk-auth-layout .flowdesk-auth-brand {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 28px;
+    max-width: 640px;
+    width: 100%;
+}
+
+.flowdesk-auth-layout .flowdesk-auth-visual-image {
+    width: min(100%, 620px);
     height: auto;
-    max-height: min(86vh, 640px);
+    max-height: min(62vh, 480px);
     object-fit: contain;
     object-position: center;
     display: block;
-    overflow: hidden;
-    border-radius: 24px;
+}
+
+.flowdesk-auth-layout .flowdesk-auth-brand-name {
+    margin: 0;
+    text-align: center;
+    color: #1B4F72;
+    font-size: clamp(1.75rem, 3.2vw, 2.75rem);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1.15;
 }
 
 .flowdesk-login-visual__blob {
@@ -505,11 +519,13 @@ body.fi-panel-user .fi-main-ctn .fi-ta-ctn .fi-ta-content-ctn {
 }
 
 .flowdesk-auth-layout .fi-simple-main-ctn {
+    position: relative;
+    z-index: 1;
     min-height: 100vh;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 48px clamp(28px, 5vw, 72px);
+    padding: 48px clamp(24px, 4vw, 64px);
 }
 
 .flowdesk-auth-layout .fi-simple-main {
@@ -538,7 +554,7 @@ body.fi-panel-user .fi-main-ctn .fi-ta-ctn .fi-ta-content-ctn {
     align-self: center;
     height: auto !important;
     margin-bottom: 16px;
-    color: #6366f1;
+    color: #1B4F72;
     font-size: 24px;
     font-weight: 800;
     letter-spacing: 0;
@@ -548,9 +564,18 @@ body.fi-panel-user .fi-main-ctn .fi-ta-ctn .fi-ta-content-ctn {
 
 .flowdesk-auth-layout img.fi-logo {
     width: auto;
-    max-width: 180px;
-    max-height: 64px;
+    max-width: 100%;
+    max-height: 88px;
     object-fit: contain;
+    object-position: left center;
+}
+
+.dark .flowdesk-auth-layout .fi-logo-dark {
+    display: none !important;
+}
+
+.dark .flowdesk-auth-layout .fi-logo-light {
+    display: block !important;
 }
 
 .flowdesk-auth-layout .flowdesk-auth-logo {
@@ -558,7 +583,7 @@ body.fi-panel-user .fi-main-ctn .fi-ta-ctn .fi-ta-content-ctn {
     flex-direction: column;
     align-items: center;
     gap: 8px;
-    color: #6366f1;
+    color: #1B4F72;
 }
 
 .flowdesk-auth-layout .flowdesk-auth-logo svg {
@@ -568,7 +593,7 @@ body.fi-panel-user .fi-main-ctn .fi-ta-ctn .fi-ta-content-ctn {
 }
 
 .flowdesk-auth-layout .flowdesk-auth-logo strong {
-    color: #6366f1;
+    color: #1B4F72;
     font-size: 20px;
     line-height: 1;
 }
@@ -671,7 +696,7 @@ body.fi-panel-user .fi-main-ctn .fi-ta-ctn .fi-ta-content-ctn {
 }
 
 .flowdesk-auth-layout .fi-input-wrp:focus-within {
-    border-color: #6366f1 !important;
+    border-color: #1B4F72 !important;
     box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2) !important;
 }
 
@@ -746,8 +771,8 @@ body.fi-panel-user .fi-main-ctn .fi-ta-ctn .fi-ta-content-ctn {
 }
 
 .flowdesk-auth-layout .fi-checkbox-input:checked {
-    border-color: #6366f1 !important;
-    background-color: #6366f1 !important;
+    border-color: #1B4F72 !important;
+    background-color: #1B4F72 !important;
 }
 
 .flowdesk-auth-layout .fi-fo-checkbox,
@@ -779,7 +804,7 @@ body.fi-panel-user .fi-main-ctn .fi-ta-ctn .fi-ta-content-ctn {
     min-height: 48px !important;
     width: 100%;
     border-radius: 10px !important;
-    background: linear-gradient(135deg, #6366f1, #4f46e5) !important;
+    background: linear-gradient(135deg, #1B4F72, #15405C) !important;
     color: #ffffff !important;
     font-size: 14px !important;
     font-weight: 700 !important;
@@ -788,7 +813,7 @@ body.fi-panel-user .fi-main-ctn .fi-ta-ctn .fi-ta-content-ctn {
 
 .flowdesk-auth-layout .fi-btn:hover,
 .flowdesk-auth-layout .fi-btn:focus-visible {
-    background: linear-gradient(135deg, #4f46e5, #4338ca) !important;
+    background: linear-gradient(135deg, #15405C, #12344C) !important;
 }
 
 .flowdesk-auth-layout .fi-simple-layout-forgot-password-link {
@@ -805,11 +830,19 @@ body.fi-panel-user .fi-main-ctn .fi-ta-ctn .fi-ta-content-ctn {
 
 .flowdesk-auth-layout .fi-simple-layout-forgot-password-link .fi-link:hover,
 .flowdesk-auth-layout .fi-link:hover {
-    color: #6366f1 !important;
+    color: #1B4F72 !important;
 }
 
 /* Keep login light even when panel default theme is dark */
-.dark .flowdesk-auth-layout,
+.dark body.fi-body:has(.flowdesk-auth-layout),
+html.dark:has(.flowdesk-auth-layout) {
+    background: #eef3f7 !important;
+}
+
+.dark .flowdesk-auth-layout {
+    background-color: #eef3f7 !important;
+}
+
 .dark .flowdesk-auth-layout .fi-simple-main,
 .dark .flowdesk-auth-layout .fi-input-wrp {
     background-color: #ffffff !important;
@@ -842,15 +875,29 @@ body.fi-panel-user .fi-main-ctn .fi-ta-ctn .fi-ta-content-ctn {
 @media (max-width: 1024px) {
     .flowdesk-auth-layout {
         grid-template-columns: 1fr;
-        background: #f1f5f9;
     }
 
     .flowdesk-auth-layout .flowdesk-auth-visual {
-        display: none;
+        min-height: auto;
+        padding: 32px 24px 0;
+    }
+
+    .flowdesk-auth-layout .flowdesk-auth-visual-image {
+        width: min(70%, 280px);
+        max-height: 180px;
+    }
+
+    .flowdesk-auth-layout .flowdesk-auth-brand {
+        gap: 16px;
+    }
+
+    .flowdesk-auth-layout .flowdesk-auth-brand-name {
+        font-size: 1.5rem;
     }
 
     .flowdesk-auth-layout .fi-simple-main-ctn {
         padding: 28px 18px;
+        min-height: auto;
     }
 
     .flowdesk-auth-layout .fi-simple-main {
@@ -961,10 +1008,31 @@ html:not(.dark) .fi-main-sidebar .fi-sidebar-item-btn:focus-visible .fi-sidebar-
     color: #475569;
 }
 
-html:not(.dark) .fi-main-sidebar .fi-logo img,
-html:not(.dark) .fi-main-sidebar img.fi-logo {
-    filter: none;
-    opacity: 1;
+.fi-main-sidebar .fi-sidebar-header-logo-ctn {
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+}
+
+.fi-main-sidebar .fi-sidebar-header-logo-ctn a {
+    display: flex;
+    min-width: 0;
+    max-width: 100%;
+}
+
+html:not(.dark) .fi-main-sidebar img.fi-logo,
+.dark .fi-main-sidebar img.fi-logo,
+.fi-main-sidebar img.fi-logo {
+    max-width: 100%;
+    height: auto !important;
+    max-height: 2.35rem;
+    width: auto;
+    object-fit: contain;
+}
+
+aside.fi-sidebar:not(.sidebar-pinned):not(:hover) img.fi-logo {
+    max-width: 2.75rem !important;
+    object-position: left center;
 }
 
 /* Dark mode sidebar */
@@ -1051,9 +1119,15 @@ html:not(.dark) body.fi-panel-user .fi-topbar {
     border-bottom: 1px solid #e2e8f0;
 }
 
-html:not(.dark) body.fi-panel-merchant .fi-topbar .fi-logo,
-html:not(.dark) body.fi-panel-user .fi-topbar .fi-logo {
-    color: #0f172a;
+html:not(.dark) body.fi-panel-merchant .fi-topbar img.fi-logo,
+html:not(.dark) body.fi-panel-user .fi-topbar img.fi-logo,
+.dark body.fi-panel-merchant .fi-topbar img.fi-logo,
+.dark body.fi-panel-user .fi-topbar img.fi-logo {
+    max-height: 2.25rem;
+    max-width: 16rem;
+    width: auto;
+    height: auto;
+    object-fit: contain;
 }
 
 .dark body.fi-panel-merchant .fi-topbar .fi-logo,
@@ -1309,8 +1383,8 @@ html:not(.dark) body.fi-panel-user .fi-topbar .fi-logo {
 .dashboard-filters-section .dashboard-product-variant-select .fi-select-input-option.dashboard-variant-option-checked::before,
 .dashboard-filters-section .dashboard-product-variant-select .fi-select-input-option.fi-selected::before,
 .dashboard-filters-section .dashboard-product-variant-select .fi-select-input-option[aria-selected='true']::before {
-    border-color: var(--primary-600, #6366f1);
-    background-color: var(--primary-600, #6366f1);
+    border-color: var(--primary-600, #1B4F72);
+    background-color: var(--primary-600, #1B4F72);
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='white'%3E%3Cpath d='M12.207 4.793a1 1 0 0 1 0 1.414l-5 5a1 1 0 0 1-1.414 0l-2.5-2.5a1 1 0 0 1 1.414-1.414L6.5 9.086l4.293-4.293a1 1 0 0 1 1.414 0z'/%3E%3C/svg%3E");
 }
 
@@ -1326,7 +1400,7 @@ html:not(.dark) body.fi-panel-user .fi-topbar .fi-logo {
 
 .dashboard-filters-section .dashboard-product-variant-select .fi-select-input-option.fi-selected:hover,
 .dashboard-filters-section .dashboard-product-variant-select .fi-select-input-option[aria-selected='true']:hover {
-    background-color: color-mix(in srgb, var(--primary-600, #6366f1) 8%, transparent);
+    background-color: color-mix(in srgb, var(--primary-600, #1B4F72) 8%, transparent);
 }
 
 .dashboard-filters-section .fi-fo-select .fi-input-wrp:focus-within,

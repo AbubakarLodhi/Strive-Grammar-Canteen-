@@ -28,7 +28,7 @@ class DemoAccountController extends Controller
                 $visitorSession = null;
             } else {
                 return redirect()
-                    ->route('landing')
+                    ->route('filament.merchant.auth.login')
                     ->with(
                         'demo_expired',
                         'Your demo time has ended. You can start a new demo after the daily reset at '.DemoAccount::dailyResetLabel().'.'
@@ -60,7 +60,7 @@ class DemoAccountController extends Controller
 
         if (! $merchant->is_active) {
             return redirect()
-                ->route('landing')
+                ->route('filament.merchant.auth.login')
                 ->with('error', 'Demo account is not available yet. Please contact support.');
         }
 

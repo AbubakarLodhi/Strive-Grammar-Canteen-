@@ -9,15 +9,17 @@ use App\Filament\Resources\Purchases\Pages\ViewPurchase;
 use App\Filament\Resources\Purchases\Schemas\PurchaseForm;
 use App\Filament\Resources\Purchases\Schemas\PurchaseInfolist;
 use App\Filament\Resources\Purchases\Tables\PurchasesTable;
+use App\Models\Merchant;
 use App\Models\PermissionModule;
 use App\Models\Purchase;
+use App\Models\User;
 use BackedEnum;
 use Filament\Facades\Filament;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
-use Illuminate\Database\Schema\Builder;
+use Illuminate\Database\Eloquent\Builder;
 
 class PurchaseResource extends Resource
 {
@@ -25,9 +27,9 @@ class PurchaseResource extends Resource
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::ShoppingCart;
 
-    protected static string|\UnitEnum|null $navigationGroup = 'Procurement';
+    protected static string|\UnitEnum|null $navigationGroup = 'Purchase';
 
-    protected static ?int $navigationSort = 4;
+    protected static ?int $navigationSort = 1;
 
     protected static ?string $recordTitleAttribute = 'purchase_no';
 
@@ -82,18 +84,18 @@ class PurchaseResource extends Resource
         return false;
     }
 
-    public static function getEloquentQuery(): \Illuminate\Database\Eloquent\Builder
+    public static function getEloquentQuery(): Builder
     {
         $query = parent::getEloquentQuery()
             ->with([
                 'returns:id,purchase_id,subtotal,total_discount,total_tax,total_amount',
             ]);
-        $user  = Filament::auth()->user();
+        $user = Filament::auth()->user();
 
         $merchantId = match (true) {
-            $user instanceof \App\Models\Merchant => $user->id,
-            $user instanceof \App\Models\User     => $user->merchant_id,
-            default                               => null,
+            $user instanceof Merchant => $user->id,
+            $user instanceof User => $user->merchant_id,
+            default => null,
         };
 
         if (! $merchantId) {
@@ -101,24 +103,19 @@ class PurchaseResource extends Resource
         }
 
         // 🟢 MERCHANT → all purchases
-        if ($user instanceof \App\Models\Merchant) {
+        if ($user instanceof Merchant) {
             return $query->where('merchant_id', $merchantId);
         }
 
         // 🔵 STAFF → via pivots (business_users + branch_users)
         return $query
             ->where('merchant_id', $merchantId)
-            ->whereHas('items.business.users', fn ($q) =>
-            $q->where('users.id', $user->id)
+            ->whereHas('items.business.users', fn ($q) => $q->where('users.id', $user->id)
             )
-            ->whereHas('items.branch.users', fn ($q) =>
-            $q->where('users.id', $user->id)
+            ->whereHas('items.branch.users', fn ($q) => $q->where('users.id', $user->id)
             );
 
     }
-
-
-
 
     public static function form(Schema $schema): Schema
     {

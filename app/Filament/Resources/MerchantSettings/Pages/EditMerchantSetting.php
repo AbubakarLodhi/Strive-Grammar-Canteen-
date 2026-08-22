@@ -6,6 +6,7 @@ use App\Enums\AttachmentMetaType;
 use App\Enums\AttachmentType;
 use App\Filament\Resources\MerchantSettings\MerchantSettingResource;
 use App\Models\MerchantSetting;
+use App\Services\Finance\FinanceLedger;
 use Filament\Actions\DeleteAction;
 use Filament\Resources\Pages\EditRecord;
 use Illuminate\Database\Eloquent\Model;
@@ -13,6 +14,7 @@ use Illuminate\Database\Eloquent\Model;
 class EditMerchantSetting extends EditRecord
 {
     protected static string $resource = MerchantSettingResource::class;
+
     protected static ?string $title = 'Merchant Settings';
 
     /** Processed logo path captured in mutateFormDataBeforeSave (file already moved by Filament) */
@@ -95,16 +97,18 @@ class EditMerchantSetting extends EditRecord
     protected function afterSave(): void
     {
         $merchant = $this->record->merchant ?? auth('merchant')->user();
-        if (! $merchant) return;
+        if (! $merchant) {
+            return;
+        }
 
         /* ── MERCHANT LOGO ── */
         if ($this->pendingLogoPath) {
             $merchant->logo()?->delete();
             $merchant->logo()->create([
                 'merchant_id' => $merchant->id,
-                'type'        => AttachmentType::IMAGE,
-                'meta_type'   => AttachmentMetaType::MERCHANT_LOGO,
-                'photo_url'   => $this->pendingLogoPath,
+                'type' => AttachmentType::IMAGE,
+                'meta_type' => AttachmentMetaType::MERCHANT_LOGO,
+                'photo_url' => $this->pendingLogoPath,
             ]);
         } elseif ($this->clearLogo) {
             $merchant->logo()?->delete();
@@ -121,6 +125,8 @@ class EditMerchantSetting extends EditRecord
                     ? $this->cashAccountAmount($state['cash_in_bank'])
                     : $merchant->cash_in_bank,
             ]);
+
+            app(FinanceLedger::class)->syncOpeningCash($merchant->fresh());
         }
 
         $this->redirect(request()->header('Referer'), navigate: false);

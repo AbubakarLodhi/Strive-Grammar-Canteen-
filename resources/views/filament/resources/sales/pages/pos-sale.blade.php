@@ -6,7 +6,7 @@
     $user = Filament::auth()->user();
     $merchant = $user instanceof \App\Models\Merchant ? $user : $user?->merchant;
     $settings = $merchant?->settings;
-    $posPrimary = $settings?->primary_color ?? '#6366f1';
+    $posPrimary = $settings?->primary_color ?? '#1B4F72';
     $posSuccess = $settings?->success_color ?? $posPrimary;
 
     $salesIndexUrl = SaleResource::getUrl('index');

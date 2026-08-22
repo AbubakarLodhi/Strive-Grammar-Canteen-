@@ -55,7 +55,7 @@ class DemoSessionTimeout
             $request->session()->forget('demo_visitor_session_id');
 
             return redirect()
-                ->route('landing', ['notice' => 'demo_expired'])
+                ->route('filament.merchant.auth.login', ['notice' => 'demo_expired'])
                 ->with('demo_expired', (string) config('demo.notices.demo_expired'));
         }
 

@@ -70,6 +70,10 @@ class RolesSeeder extends Seeder
                 'asset_types.view',
                 'payrolls.view',
                 'orders.view',
+                'ledger_accounts.*',
+                'journal_vouchers.*',
+                'bank_deposits.*',
+                'finance_ledger.view',
             ],
 
             // ⚪ DATA ENTRY
