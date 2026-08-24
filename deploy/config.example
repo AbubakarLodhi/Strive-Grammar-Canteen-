@@ -1,0 +1,15 @@
+# Copy this file to deploy/config and edit the values for your WebSouls cPanel account.
+# deploy/config is gitignored so secrets/paths stay on the server only.
+
+# Where the live site files should live (usually public_html for the main domain).
+# Examples:
+#   DEPLOY_PATH="$HOME/public_html"
+#   DEPLOY_PATH="$HOME/yourdomain.com"
+DEPLOY_PATH="$HOME/public_html"
+
+# Prefer PHP 8.2 or 8.3 on cPanel (Laravel 12 requires PHP 8.2+).
+# Check in cPanel → Select PHP Version, or run: ls /opt/cpanel/ea-php*/root/usr/bin/php
+PHP_BIN="/opt/cpanel/ea-php83/root/usr/bin/php"
+
+# Optional if composer is not on PATH:
+# COMPOSER_BIN="$HOME/bin/composer"
