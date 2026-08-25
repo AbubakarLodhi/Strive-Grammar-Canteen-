@@ -72,6 +72,14 @@ mkdir -p "$DEPLOY_PATH"
 
 cd "$DEPLOY_PATH"
 
+# Shared hosting: document root is public_html (project root), so expose public assets at web root.
+if [[ -d public ]]; then
+  /bin/cp -R public/build public/images public/favicon* public/robots.txt . 2>/dev/null || true
+  [[ -f public/css ]] || true
+  /bin/cp -R public/css . 2>/dev/null || true
+  /bin/cp -R public/js . 2>/dev/null || true
+fi
+
 mkdir -p storage/framework/{cache,sessions,views} storage/logs bootstrap/cache
 chmod -R ug+rwx storage bootstrap/cache || true
 
