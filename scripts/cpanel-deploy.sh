@@ -17,8 +17,10 @@ PHP_BIN="${PHP_BIN:-}"
 
 if [[ -z "$PHP_BIN" ]]; then
   for candidate in \
-    /opt/cpanel/ea-php83/root/usr/bin/php \
     /opt/cpanel/ea-php84/root/usr/bin/php \
+    /usr/local/bin/ea-php84 \
+    /opt/cpanel/ea-php83/root/usr/bin/php \
+    /usr/local/bin/ea-php83 \
     /opt/cpanel/ea-php82/root/usr/bin/php \
     "$(command -v php || true)"
   do
@@ -30,7 +32,7 @@ if [[ -z "$PHP_BIN" ]]; then
 fi
 
 if [[ -z "${PHP_BIN}" || ! -x "${PHP_BIN}" ]]; then
-  echo "ERROR: PHP CLI not found. Set PHP_BIN in deploy/config (e.g. /opt/cpanel/ea-php83/root/usr/bin/php)."
+  echo "ERROR: PHP CLI not found. Set PHP_BIN in deploy/config (e.g. /usr/local/bin/ea-php84)."
   exit 1
 fi
 
@@ -49,13 +51,15 @@ echo "PHP:            $PHP_BIN"
 
 mkdir -p "$DEPLOY_PATH"
 
-# Preserve production secrets and writable storage across deploys.
+# Preserve production secrets, uploaded vendor/, and writable storage across deploys.
 /bin/tar \
   --exclude='.git' \
   --exclude='.env' \
   --exclude='.env.*' \
   --exclude='deploy/config' \
   --exclude='node_modules' \
+  --exclude='vendor' \
+  --exclude='vendor.zip' \
   --exclude='storage/app' \
   --exclude='storage/framework/cache' \
   --exclude='storage/framework/sessions' \
@@ -75,20 +79,23 @@ if [[ ! -f .env ]]; then
   echo "WARNING: No .env in $DEPLOY_PATH yet. Copy .env.example to .env and configure it before the site will work."
 fi
 
-if [[ -n "${COMPOSER_BIN}" ]]; then
+# Skip composer when vendor/ was uploaded manually (no SSH hosts).
+if [[ -f vendor/autoload.php && "${FORCE_COMPOSER:-0}" != "1" ]]; then
+  echo "vendor/ already present — skipping composer install."
+elif [[ -n "${COMPOSER_BIN}" ]]; then
   echo "Running composer install..."
   $COMPOSER_BIN install --no-dev --optimize-autoloader --no-interaction
 else
-  echo "WARNING: composer not found. Upload vendor/ once via SSH or install composer."
+  echo "WARNING: composer not found and vendor/ missing. Upload vendor.zip to public_html."
 fi
 
+# Cache only — migrations are run separately via Cron when SSH is unavailable.
 if [[ -f artisan && -f .env ]]; then
-  $PHP_BIN artisan migrate --force
   $PHP_BIN artisan storage:link 2>/dev/null || true
-  $PHP_BIN artisan optimize:clear
-  $PHP_BIN artisan config:cache
-  $PHP_BIN artisan route:cache
-  $PHP_BIN artisan view:cache
+  $PHP_BIN artisan optimize:clear || true
+  $PHP_BIN artisan config:cache || true
+  $PHP_BIN artisan route:cache || true
+  $PHP_BIN artisan view:cache || true
   $PHP_BIN artisan filament:optimize 2>/dev/null || true
 fi
 
