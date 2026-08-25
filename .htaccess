@@ -1,4 +1,12 @@
 <IfModule mod_rewrite.c>
+    Options +FollowSymLinks -MultiViews -Indexes
     RewriteEngine On
-    RewriteRule ^(.*)$ public/$1 [L]
+    RewriteBase /
+
+    # Send all requests into Laravel's public/ folder
+    RewriteCond %{REQUEST_URI} !^/public/
+    RewriteRule ^(.*)$ public/$1 [L,QSA]
 </IfModule>
+
+# Fallback if rewrite is limited
+DirectoryIndex public/index.php
