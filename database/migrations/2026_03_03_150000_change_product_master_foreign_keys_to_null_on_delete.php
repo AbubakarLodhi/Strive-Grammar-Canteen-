@@ -1,34 +1,42 @@
 <?php
 
 use Illuminate\Database\Migrations\Migration;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
     public function up(): void
     {
-        DB::statement('ALTER TABLE products DROP CONSTRAINT IF EXISTS products_category_id_foreign');
-        DB::statement('ALTER TABLE products DROP CONSTRAINT IF EXISTS products_sub_category_id_foreign');
-        DB::statement('ALTER TABLE products DROP CONSTRAINT IF EXISTS products_brand_id_foreign');
-        DB::statement('ALTER TABLE products DROP CONSTRAINT IF EXISTS products_brand_model_id_foreign');
+        Schema::table('products', function (Blueprint $table) {
+            $table->dropForeign(['category_id']);
+            $table->dropForeign(['sub_category_id']);
+            $table->dropForeign(['brand_id']);
+            $table->dropForeign(['brand_model_id']);
+        });
 
-        DB::statement('ALTER TABLE products ADD CONSTRAINT products_category_id_foreign FOREIGN KEY (category_id) REFERENCES categories(id) ON UPDATE CASCADE ON DELETE SET NULL');
-        DB::statement('ALTER TABLE products ADD CONSTRAINT products_sub_category_id_foreign FOREIGN KEY (sub_category_id) REFERENCES categories(id) ON UPDATE CASCADE ON DELETE SET NULL');
-        DB::statement('ALTER TABLE products ADD CONSTRAINT products_brand_id_foreign FOREIGN KEY (brand_id) REFERENCES brands(id) ON UPDATE CASCADE ON DELETE SET NULL');
-        DB::statement('ALTER TABLE products ADD CONSTRAINT products_brand_model_id_foreign FOREIGN KEY (brand_model_id) REFERENCES brand_models(id) ON UPDATE CASCADE ON DELETE SET NULL');
+        Schema::table('products', function (Blueprint $table) {
+            $table->foreign('category_id')->references('id')->on('categories')->nullOnDelete()->cascadeOnUpdate();
+            $table->foreign('sub_category_id')->references('id')->on('categories')->nullOnDelete()->cascadeOnUpdate();
+            $table->foreign('brand_id')->references('id')->on('brands')->nullOnDelete()->cascadeOnUpdate();
+            $table->foreign('brand_model_id')->references('id')->on('brand_models')->nullOnDelete()->cascadeOnUpdate();
+        });
     }
 
     public function down(): void
     {
-        DB::statement('ALTER TABLE products DROP CONSTRAINT IF EXISTS products_category_id_foreign');
-        DB::statement('ALTER TABLE products DROP CONSTRAINT IF EXISTS products_sub_category_id_foreign');
-        DB::statement('ALTER TABLE products DROP CONSTRAINT IF EXISTS products_brand_id_foreign');
-        DB::statement('ALTER TABLE products DROP CONSTRAINT IF EXISTS products_brand_model_id_foreign');
+        Schema::table('products', function (Blueprint $table) {
+            $table->dropForeign(['category_id']);
+            $table->dropForeign(['sub_category_id']);
+            $table->dropForeign(['brand_id']);
+            $table->dropForeign(['brand_model_id']);
+        });
 
-        DB::statement('ALTER TABLE products ADD CONSTRAINT products_category_id_foreign FOREIGN KEY (category_id) REFERENCES categories(id) ON UPDATE CASCADE ON DELETE CASCADE');
-        DB::statement('ALTER TABLE products ADD CONSTRAINT products_sub_category_id_foreign FOREIGN KEY (sub_category_id) REFERENCES categories(id) ON UPDATE CASCADE ON DELETE CASCADE');
-        DB::statement('ALTER TABLE products ADD CONSTRAINT products_brand_id_foreign FOREIGN KEY (brand_id) REFERENCES brands(id) ON UPDATE CASCADE ON DELETE CASCADE');
-        DB::statement('ALTER TABLE products ADD CONSTRAINT products_brand_model_id_foreign FOREIGN KEY (brand_model_id) REFERENCES brand_models(id) ON UPDATE CASCADE ON DELETE CASCADE');
+        Schema::table('products', function (Blueprint $table) {
+            $table->foreign('category_id')->references('id')->on('categories')->cascadeOnDelete()->cascadeOnUpdate();
+            $table->foreign('sub_category_id')->references('id')->on('categories')->cascadeOnDelete()->cascadeOnUpdate();
+            $table->foreign('brand_id')->references('id')->on('brands')->cascadeOnDelete()->cascadeOnUpdate();
+            $table->foreign('brand_model_id')->references('id')->on('brand_models')->cascadeOnDelete()->cascadeOnUpdate();
+        });
     }
 };
