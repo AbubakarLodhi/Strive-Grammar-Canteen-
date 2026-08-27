@@ -72,6 +72,22 @@ mkdir -p "$DEPLOY_PATH"
 
 cd "$DEPLOY_PATH"
 
+# Shared hosting often resets this to 700 and the site returns 403/404.
+chmod 755 "$DEPLOY_PATH" 2>/dev/null || true
+
+# Keep PHP 8.4 after deploy (repo .htaccess can overwrite MultiPHP handlers).
+if [[ -f .htaccess ]] && ! grep -q 'ea-php84' .htaccess; then
+  {
+    echo '# php -- BEGIN cPanel-generated handler, do not edit'
+    echo '<IfModule mime_module>'
+    echo '  AddHandler application/x-httpd-ea-php84___lsphp .php .php8 .phtml'
+    echo '</IfModule>'
+    echo '# php -- END cPanel-generated handler, do not edit'
+    echo
+    cat .htaccess
+  } > .htaccess.tmp && mv .htaccess.tmp .htaccess
+fi
+
 # Shared hosting: document root is public_html (project root), so expose public assets at web root.
 if [[ -d public ]]; then
   /bin/cp -R public/build public/images public/favicon* public/robots.txt . 2>/dev/null || true
