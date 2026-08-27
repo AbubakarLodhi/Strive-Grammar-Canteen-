@@ -27,4 +27,13 @@ class SaleJournalVoucherDecouplingTest extends TestCase
         $this->assertStringContainsString("make('payment_amount')", $form);
         $this->assertStringContainsString('Payment to', $form);
     }
+
+    public function test_journal_voucher_list_hides_sale_sourced_vouchers(): void
+    {
+        $resource = file_get_contents(app_path('Filament/Resources/JournalVouchers/JournalVoucherResource.php'));
+
+        $this->assertStringContainsString('SaleReturn', $resource);
+        $this->assertStringContainsString('whereNull(\'source_type\')', $resource);
+        $this->assertStringContainsString('orWhereNotIn(\'source_type\'', $resource);
+    }
 }
