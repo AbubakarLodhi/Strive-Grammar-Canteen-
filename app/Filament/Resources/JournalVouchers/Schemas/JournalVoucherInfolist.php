@@ -20,6 +20,9 @@ class JournalVoucherInfolist
                     TextEntry::make('status')
                         ->badge()
                         ->formatStateUsing(fn ($state) => $state?->label() ?? $state),
+                    TextEntry::make('vendor.name')
+                        ->label('Vendor')
+                        ->placeholder('—'),
                     TextEntry::make('narration')->columnSpanFull(),
                 ]),
             Section::make('Entries')

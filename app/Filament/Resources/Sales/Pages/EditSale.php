@@ -10,9 +10,10 @@ use App\Models\Merchant;
 use App\Models\Payment;
 use App\Models\Product;
 use App\Models\ProductVariant;
-use App\Services\Finance\OperationalLedgerPoster;
+use App\Services\SaleDeletionService;
 use App\Services\Notifications\NotificationDispatcher;
 use App\Services\PaymentLedgerService;
+use App\Services\Finance\OperationalLedgerPoster;
 use App\Support\ProductStockAvailability;
 use Carbon\Carbon;
 use Filament\Actions\Action;
@@ -36,6 +37,9 @@ class EditSale extends EditRecord
     protected ?string $paymentDate = null;
 
     protected string $paymentEntryType = 'payment';
+
+    /** @var list<array<string, mixed>> */
+    protected array $pendingItems = [];
 
     // ─── POS toggle ───────────────────────────────────────────────
     public string $viewMode = 'standard'; // 'standard' | 'pos'
@@ -69,7 +73,7 @@ class EditSale extends EditRecord
                 'product_id' => $item->product_id,
                 'product_name' => $item->product?->name ?? '',
                 'product_variant_id' => $variant?->product_variant_id ?? null,
-                'variant_name' => $variant?->productVariant?->name ?? '',
+                'variant_name' => $variant?->variant?->name ?? '',
                 'branch_id' => $item->branch_id,
                 'branch_name' => $item->branch?->name ?? '',
                 'quantity' => $item->quantity,
@@ -303,68 +307,79 @@ class EditSale extends EditRecord
     // ─── POS submit (update existing sale) ────────────────────────
     public function posSubmit(): void
     {
+        if ($this->isPartiallyReturnedSale()) {
+            Notification::make()
+                ->title('This sale has returns')
+                ->body('Products on a partially returned sale cannot be edited. You can still record payments in the standard view.')
+                ->warning()
+                ->send();
+
+            return;
+        }
+
         if (empty($this->posCart) || ! $this->posCustomerId) {
             $this->addError('pos', 'Please select a customer and add at least one item.');
 
             return;
         }
 
-        $items = array_values($this->posCart);
+        $items = self::normalizeItems(array_values($this->posCart));
+
+        $stockError = ProductStockAvailability::validateSaleItemsStock($items, (string) $this->record->id);
+
+        if ($stockError !== null) {
+            Notification::make()
+                ->title('Stock unavailable')
+                ->body($stockError)
+                ->danger()
+                ->send();
+
+            return;
+        }
 
         DB::transaction(function () use ($items) {
-            $subtotal = collect($items)->sum(fn ($i) => (float) ($i['quantity'] ?? 0) * (float) ($i['unit_price'] ?? 0));
-            $totalDiscount = collect($items)->sum(fn ($i) => (float) ($i['discount_amount'] ?? 0));
-            $totalTax = collect($items)->sum(fn ($i) => (float) ($i['tax_amount'] ?? 0));
-            $totalAmount = $subtotal - $totalDiscount + $totalTax;
-            $paidAmount = $this->posPaymentMethod === 'cash' ? $totalAmount : 0;
-            $dueAmount = $totalAmount - $paidAmount;
+            $subtotal = collect($items)->sum(fn ($i) => (float) ($i['line_total'] ?? 0));
+            $totalDiscount = 0.0;
+            $totalTax = 0.0;
+
+            foreach ($items as $item) {
+                $lineTotal = (float) ($item['line_total'] ?? 0);
+                $discountRate = max(0, min(100, (float) ($item['discount'] ?? 0)));
+                $taxRate = max(0, min(100, (float) ($item['tax'] ?? 0)));
+                $discountAmount = $lineTotal * ($discountRate / 100);
+                $taxableAmount = $lineTotal - $discountAmount;
+                $totalDiscount += $discountAmount;
+                $totalTax += $taxableAmount * ($taxRate / 100);
+            }
+
+            $totalAmount = round($subtotal - $totalDiscount + $totalTax, 2);
+            $recordedPaid = $this->getRecordedPaidAmount();
+            $desiredPaid = $this->posPaymentMethod === 'cash'
+                ? $totalAmount
+                : min($recordedPaid, $totalAmount);
+            $paymentDelta = round($desiredPaid - $recordedPaid, 2);
 
             $this->record->update([
                 'customer_id' => $this->posCustomerId,
                 'sale_date' => $this->posSaleDate,
-                'subtotal' => $subtotal,
+                'subtotal' => round($subtotal, 2),
                 'total_amount' => $totalAmount,
-                'paid_amount' => $paidAmount,
-                'due_amount' => $dueAmount,
+                'paid_amount' => $desiredPaid,
+                'due_amount' => max(0, round($totalAmount - $desiredPaid, 2)),
+                'payment_type' => ($totalAmount - $desiredPaid) > 0 ? 'credit' : 'cash',
             ]);
 
-            // Recreate items
-            $this->record->items()->delete();
+            $this->syncSaleItems($this->record, $items);
 
-            foreach ($items as $item) {
-                $branch = Branch::select('id', 'business_id')->find($item['branch_id']);
-                if (! $branch) {
-                    continue;
-                }
-
-                $saleItem = $this->record->items()->create([
-                    'business_id' => $branch->business_id,
-                    'branch_id' => $branch->id,
-                    'product_id' => $item['product_id'],
-                    'quantity' => $item['quantity'],
-                    'unit_price' => $item['unit_price'],
-                    'line_total' => $item['line_total'],
-                    'discount' => $item['discount'] ?? 0,
-                    'tax' => $item['tax'] ?? 0,
-                ]);
-
-                if (! empty($item['product_variant_id'])) {
-                    $saleItem->variants()->create([
-                        'product_variant_id' => $item['product_variant_id'],
-                        'quantity' => $item['quantity'],
-                        'unit_price' => $item['unit_price'],
-                        'line_total' => $item['line_total'],
-                    ]);
-                }
-            }
-
-            if ($paidAmount > 0) {
+            if ($paymentDelta != 0.0) {
                 PaymentLedgerService::recordSalePayment(
                     $this->record->fresh(),
-                    $paidAmount,
+                    $paymentDelta,
                     $this->posSaleDate,
                 );
             }
+
+            app(OperationalLedgerPoster::class)->syncSale($this->record->fresh(['payments']));
         });
 
         Notification::make()
@@ -400,7 +415,8 @@ class EditSale extends EditRecord
 
             DeleteAction::make()
                 ->color('danger')
-                ->visible(fn () => auth($guard)->user()?->hasPermissionTo('sales.delete', $guard)),
+                ->visible(fn () => auth($guard)->user()?->hasPermissionTo('sales.delete', $guard))
+                ->before(fn () => app(SaleDeletionService::class)->prepare($this->getRecord())),
         ];
     }
 
@@ -474,6 +490,15 @@ class EditSale extends EditRecord
             ];
 
             self::applyPaymentFields($lockedData);
+            $this->pendingItems = [];
+
+            if ($this->paymentDelta == 0.0) {
+                Notification::make()
+                    ->title('Only payments can be updated')
+                    ->body('This sale has returns, so products and other sale details are locked.')
+                    ->warning()
+                    ->send();
+            }
 
             return [
                 'paid_amount' => $lockedData['paid_amount'],
@@ -482,25 +507,42 @@ class EditSale extends EditRecord
             ];
         }
 
-        $this->preparePaymentDelta($data);
-        $items = $data['items'] ?? [];
+        $this->isPartiallyReturned = false;
+        $items = self::normalizeItems($data['items'] ?? []);
         $currentPaymentAmount = (float) ($data['current_payment_amount'] ?? 0);
 
-        if (! $this->isPartiallyReturned) {
-            $stockError = ProductStockAvailability::validateSaleItemsStock(
-                self::normalizeItems($items),
-                (string) $this->record->id,
-            );
+        if ($items === []) {
+            throw ValidationException::withMessages([
+                'data.items' => 'Add at least one product before saving the sale.',
+            ]);
+        }
 
-            if ($stockError !== null) {
+        foreach ($items as $index => $item) {
+            if (blank($item['branch_id'] ?? null)) {
                 throw ValidationException::withMessages([
-                    'data.items' => $stockError,
+                    "data.items.{$index}.branch_id" => 'Select a branch for every product line.',
+                ]);
+            }
+
+            if (blank($item['product_id'] ?? null)) {
+                throw ValidationException::withMessages([
+                    "data.items.{$index}.product_id" => 'Select a product for every line.',
                 ]);
             }
         }
 
-        unset($data['items'], $data['current_payment_amount'], $data['payment_date']);
-        $items = self::normalizeItems($items);
+        $stockError = ProductStockAvailability::validateSaleItemsStock(
+            $items,
+            (string) $this->record->id,
+        );
+
+        if ($stockError !== null) {
+            throw ValidationException::withMessages([
+                'data.items' => $stockError,
+            ]);
+        }
+
+        unset($data['items'], $data['current_payment_amount'], $data['payment_date'], $data['is_partial_return']);
 
         $subtotal = collect($items)->sum(fn ($i) => (float) ($i['line_total'] ?? 0));
         $totalDiscount = 0.0;
@@ -519,58 +561,26 @@ class EditSale extends EditRecord
             $totalTax += $taxAmount;
         }
 
-        $data['subtotal'] = $subtotal;
-        $data['total_amount'] = $subtotal - $totalDiscount + $totalTax;
+        $data['subtotal'] = round($subtotal, 2);
+        $data['total_amount'] = round($subtotal - $totalDiscount + $totalTax, 2);
         $data['current_payment_amount'] = $currentPaymentAmount;
         $this->preparePaymentDelta($data, (float) $data['total_amount']);
         unset($data['current_payment_amount']);
         $data['paid_amount'] = $this->getRecordedPaidAmount() + $this->paymentDelta;
         self::applyPaymentFields($data);
 
+        $this->pendingItems = $items;
+
         return $data;
     }
 
-    protected function afterSave(): void
+    protected function handleRecordUpdate(\Illuminate\Database\Eloquent\Model $record, array $data): \Illuminate\Database\Eloquent\Model
     {
-        $shouldNotifyCustomer = $this->paymentDelta != 0.0;
+        return DB::transaction(function () use ($record, $data) {
+            $record->update($data);
 
-        if ($this->isPartiallyReturned && $this->paymentDelta == 0.0) {
-            return;
-        }
-
-        DB::transaction(function () {
-            $items = $this->form->getState()['items'] ?? [];
-            $items = self::normalizeItems($items);
-
-            if (! $this->isPartiallyReturned) {
-                $this->record->items()->delete();
-
-                foreach ($items as $item) {
-                    $branch = Branch::select('id', 'business_id')->find($item['branch_id']);
-                    if (! $branch) {
-                        continue;
-                    }
-
-                    $saleItem = $this->record->items()->create([
-                        'business_id' => $branch->business_id,
-                        'branch_id' => $branch->id,
-                        'product_id' => $item['product_id'],
-                        'quantity' => $item['quantity'],
-                        'unit_price' => $item['unit_price'],
-                        'line_total' => $item['line_total'],
-                        'discount' => $item['discount'] ?? 0,
-                        'tax' => $item['tax'] ?? 0,
-                    ]);
-
-                    if (! empty($item['product_variant_id'])) {
-                        $saleItem->variants()->create([
-                            'product_variant_id' => $item['product_variant_id'],
-                            'quantity' => $item['quantity'],
-                            'unit_price' => $item['unit_price'],
-                            'line_total' => $item['line_total'],
-                        ]);
-                    }
-                }
+            if (! $this->isPartiallyReturned && $this->pendingItems !== []) {
+                $this->syncSaleItems($record, $this->pendingItems);
             }
 
             $state = $this->form->getRawState();
@@ -596,23 +606,69 @@ class EditSale extends EditRecord
 
             if ($this->paymentDelta != 0.0) {
                 PaymentLedgerService::recordSalePayment(
-                    $this->record->fresh(),
+                    $record->fresh(),
                     $this->paymentDelta,
                     $this->paymentDate,
                     $this->paymentEntryType,
                 );
             }
-        });
 
-        if ($shouldNotifyCustomer) {
+            $fresh = $record->fresh(['items.variants', 'payments']) ?? $record;
+            app(OperationalLedgerPoster::class)->syncSale($fresh);
+
+            return $fresh;
+        });
+    }
+
+    protected function afterSave(): void
+    {
+        if ($this->paymentDelta != 0.0) {
             $this->sendPaymentSyncEmail();
         }
+    }
 
-        $sale = $this->record->fresh(['payments']);
-        if ($sale) {
-            app(OperationalLedgerPoster::class)->syncSale($sale);
+    /**
+     * @param  list<array<string, mixed>>  $items
+     */
+    private function syncSaleItems(\Illuminate\Database\Eloquent\Model $sale, array $items): void
+    {
+        $sale->items()->each(function ($item): void {
+            $item->variants()->delete();
+            $item->delete();
+        });
+
+        foreach ($items as $index => $item) {
+            $branch = Branch::query()
+                ->withTrashed()
+                ->select('id', 'business_id')
+                ->find($item['branch_id'] ?? null);
+
+            if (! $branch) {
+                throw ValidationException::withMessages([
+                    "data.items.{$index}.branch_id" => 'A valid branch is required for every product line.',
+                ]);
+            }
+
+            $saleItem = $sale->items()->create([
+                'business_id' => $branch->business_id,
+                'branch_id' => $branch->id,
+                'product_id' => $item['product_id'],
+                'quantity' => $item['quantity'],
+                'unit_price' => $item['unit_price'],
+                'line_total' => $item['line_total'],
+                'discount' => $item['discount'] ?? 0,
+                'tax' => $item['tax'] ?? 0,
+            ]);
+
+            if (! empty($item['product_variant_id'])) {
+                $saleItem->variants()->create([
+                    'product_variant_id' => $item['product_variant_id'],
+                    'quantity' => $item['quantity'],
+                    'unit_price' => $item['unit_price'],
+                    'line_total' => $item['line_total'],
+                ]);
+            }
         }
-
     }
 
     private static function normalizeItems(array $items): array

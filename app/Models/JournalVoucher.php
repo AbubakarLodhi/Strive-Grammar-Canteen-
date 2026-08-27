@@ -35,6 +35,7 @@ class JournalVoucher extends Model implements Auditable
         'status',
         'posted_at',
         'created_by',
+        'vendor_id',
         'source_type',
         'source_id',
     ];
@@ -57,6 +58,11 @@ class JournalVoucher extends Model implements Auditable
     public function createdByUser(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function vendor(): BelongsTo
+    {
+        return $this->belongsTo(Vendor::class);
     }
 
     public function source(): MorphTo

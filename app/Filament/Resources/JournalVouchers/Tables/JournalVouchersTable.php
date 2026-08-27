@@ -30,6 +30,10 @@ class JournalVouchersTable
                 TextColumn::make('narration')
                     ->limit(40)
                     ->toggleable(),
+                TextColumn::make('vendor.name')
+                    ->label('Vendor')
+                    ->toggleable()
+                    ->placeholder('—'),
                 TextColumn::make('status')
                     ->badge()
                     ->formatStateUsing(fn (FinanceDocumentStatus|string $state): string => $state instanceof FinanceDocumentStatus ? $state->label() : $state)

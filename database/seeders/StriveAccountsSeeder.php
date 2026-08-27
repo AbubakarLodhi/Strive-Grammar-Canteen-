@@ -23,7 +23,7 @@ class StriveAccountsSeeder extends Seeder
                 'name' => 'Strive Uniform and Bookshop',
                 'phone' => null,
                 'address_line_1' => 'Pakistan',
-                'city' => 'Karachi',
+                'city' => 'Jhang Sadar',
                 'website' => null,
                 'status' => Merchant::STATUS_VERIFIED,
                 'is_active' => true,
@@ -33,6 +33,7 @@ class StriveAccountsSeeder extends Seeder
 
         $merchant->forceFill([
             'name' => 'Strive Uniform and Bookshop',
+            'city' => 'Jhang Sadar',
             'status' => Merchant::STATUS_VERIFIED,
             'is_active' => true,
             'password' => self::PASSWORD,

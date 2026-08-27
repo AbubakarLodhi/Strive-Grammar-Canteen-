@@ -15,9 +15,9 @@ use App\Models\ProductVariant;
 use App\Models\Sale;
 use App\Models\User;
 use App\Services\CreditReminderScheduler;
-use App\Services\Finance\OperationalLedgerPoster;
 use App\Services\Notifications\NotificationDispatcher;
 use App\Services\PaymentLedgerService;
+use App\Services\Finance\OperationalLedgerPoster;
 use App\Support\ProductStockAvailability;
 use Carbon\Carbon;
 use Filament\Actions\Action;
@@ -673,10 +673,16 @@ class CreateSale extends CreateRecord
                 );
             }
 
-            foreach ($items as $item) {
-                $branch = Branch::select('id', 'business_id')->find($item['branch_id']);
+            foreach ($items as $index => $item) {
+                $branch = Branch::query()
+                    ->withTrashed()
+                    ->select('id', 'business_id')
+                    ->find($item['branch_id'] ?? null);
+
                 if (! $branch) {
-                    continue;
+                    throw ValidationException::withMessages([
+                        "data.items.{$index}.branch_id" => 'Select a branch for every product line.',
+                    ]);
                 }
 
                 $saleItem = $sale->items()->create([
@@ -749,7 +755,7 @@ class CreateSale extends CreateRecord
 
     protected function afterCreate(): void
     {
-        $sale = $this->record->fresh(['customer']);
+        $sale = $this->record->fresh(['customer', 'payments']);
         if (! $sale) {
             return;
         }

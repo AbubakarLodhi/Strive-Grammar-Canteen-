@@ -7,6 +7,7 @@ use App\Filament\Resources\Customers\CustomerResource;
 use App\Models\Branch;
 use App\Models\Business;
 use App\Models\Sale;
+use App\Services\SaleDeletionService;
 use Filament\Actions\Action;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteAction;
@@ -18,12 +19,9 @@ use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Repeater;
-use Filament\Forms\Components\Select;
-
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Schemas\Components\Section;
-use Filament\Tables\Columns\BadgeColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
@@ -141,7 +139,7 @@ class SalesTable
                     ->sortable()
                     ->toggleable(),
 
-                TextColumn::make('discount')
+                TextColumn::make('items_discount_total')
                     ->label('Discount')
                     ->money('PKR')
                     ->getStateUsing(function (Sale $record) {
@@ -152,10 +150,10 @@ class SalesTable
                             return $lineTotal * ($discountRate / 100);
                         });
                     })
-                    ->sortable()
+                    ->sortable(false)
                     ->toggleable(),
 
-                TextColumn::make('tax')
+                TextColumn::make('items_tax_total')
                     ->label('Tax')
                     ->money('PKR')
                     ->getStateUsing(function (Sale $record) {
@@ -169,7 +167,7 @@ class SalesTable
                             return $taxableAmount * ($taxRate / 100);
                         });
                     })
-                    ->sortable()
+                    ->sortable(false)
                     ->toggleable(),
 
                 TextColumn::make('total_amount')
@@ -204,13 +202,14 @@ class SalesTable
                     ->toggleable()
                     ->placeholder('—'),
 
-                BadgeColumn::make('return_status')
+                TextColumn::make('return_status')
                     ->label('Return')
-                    ->colors([
-                        'gray' => '-',
-                        'warning' => 'Partially Returned',
-                        'success' => 'Returned',
-                    ])
+                    ->badge()
+                    ->color(fn (mixed $state): string => match ($state) {
+                        'Partially Returned' => 'warning',
+                        'Returned' => 'success',
+                        default => 'gray',
+                    })
                     ->getStateUsing(function (Sale $record) {
                         if (! $record->returns()->exists()) {
                             return '-';
@@ -439,7 +438,14 @@ class SalesTable
                     ->visible(fn () =>
                     auth(Filament::getCurrentPanel()->getAuthGuard())
                         ->user()?->hasPermissionTo('sales.delete', Filament::getCurrentPanel()->getAuthGuard())
-                    ),
+                    )
+                    ->before(function (DeleteAction $action, ?Sale $record): void {
+                        if (! $record) {
+                            return;
+                        }
+
+                        app(SaleDeletionService::class)->prepare($record);
+                    }),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([
@@ -447,7 +453,14 @@ class SalesTable
                         ->visible(fn () =>
                         auth(Filament::getCurrentPanel()->getAuthGuard())
                             ->user()?->hasPermissionTo('sales.delete', Filament::getCurrentPanel()->getAuthGuard())
-                        ),
+                        )
+                        ->before(function (DeleteBulkAction $action, $records): void {
+                            foreach ($records as $record) {
+                                if ($record instanceof Sale) {
+                                    app(SaleDeletionService::class)->prepare($record);
+                                }
+                            }
+                        }),
                 ]),
             ])
             ->defaultSort('sale_date', 'desc');
