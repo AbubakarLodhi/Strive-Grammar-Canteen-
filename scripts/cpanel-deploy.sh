@@ -113,8 +113,9 @@ else
   echo "WARNING: composer not found and vendor/ missing. Upload vendor.zip to public_html."
 fi
 
-# Cache only — migrations are run separately via Cron when SSH is unavailable.
+# Cache only — migrations run here on deploy when SSH/cPanel Terminal is unavailable.
 if [[ -f artisan && -f .env ]]; then
+  $PHP_BIN artisan migrate --force --no-interaction
   $PHP_BIN artisan storage:link 2>/dev/null || true
   $PHP_BIN artisan optimize:clear || true
   $PHP_BIN artisan config:cache || true
