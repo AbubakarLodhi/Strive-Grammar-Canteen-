@@ -22,7 +22,12 @@ Route::get('/bank-deposits/{id}/slip', [BankDepositSlipController::class, 'show'
     ->name('bank-deposits.slip');
 
 Route::get('/invoices/{type}/{id}', [InvoiceController::class, 'show'])
+    ->middleware(['web', 'auth.staff_or_merchant'])
     ->name('invoices.show');
+
+Route::post('/invoices/{type}/{id}/slip-number', [InvoiceController::class, 'nextSlipNumber'])
+    ->middleware(['web', 'auth.staff_or_merchant'])
+    ->name('invoices.slip-number');
 
 Route::get('/assets/preview/{id}', [AssetPreviewController::class, 'show'])
     ->middleware(['web', 'auth.staff_or_merchant'])

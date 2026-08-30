@@ -3,9 +3,13 @@
 namespace App\Http\Controllers\Invoice;
 
 use App\Models\InvoiceDynamicGroup;
+use App\Models\Merchant;
 use App\Models\Purchase;
 use App\Models\Sale;
 use App\Services\InvoiceDynamicFieldResolver;
+use App\Services\InvoiceSlipCounterService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 class InvoiceController
@@ -39,6 +43,8 @@ class InvoiceController
         if (! $record) {
             abort(404);
         }
+
+        $this->authorizeInvoiceAccess((string) $record->merchant_id);
 
         $headerGroupOptions = $this->invoiceGroupOptions((string) $record->merchant_id, 'header');
         $footerGroupOptions = $this->invoiceGroupOptions((string) $record->merchant_id, 'footer');
@@ -80,6 +86,59 @@ class InvoiceController
             'nextInvoiceUrl' => $nextInvoiceUrl,
             'closeUrl' => $this->resolveCloseUrl($type),
         ]);
+    }
+
+    public function nextSlipNumber(Request $request, string $type, string $id): JsonResponse
+    {
+        $record = $this->findInvoiceRecord($type, $id);
+        $this->authorizeInvoiceAccess((string) $record->merchant_id);
+
+        try {
+            $number = app(InvoiceSlipCounterService::class)->nextNumber((string) $record->merchant_id);
+        } catch (\Throwable $exception) {
+            report($exception);
+
+            return response()->json([
+                'message' => 'Could not assign today\'s slip number. Please run database migrations and try again.',
+            ], 503);
+        }
+
+        return response()->json([
+            'number' => $number,
+            'date' => now()->format('d/m/Y'),
+        ]);
+    }
+
+    protected function findInvoiceRecord(string $type, string $id): Sale|Purchase
+    {
+        $record = match ($type) {
+            'sale' => Sale::query()->find($id),
+            'purchase' => Purchase::query()->find($id),
+            default => throw new NotFoundHttpException(),
+        };
+
+        if (! $record) {
+            abort(404);
+        }
+
+        return $record;
+    }
+
+    protected function authorizeInvoiceAccess(string $merchantId): void
+    {
+        $user = auth('merchant')->user() ?? auth('staff')->user();
+
+        if (! $user) {
+            abort(401);
+        }
+
+        $userMerchantId = $user instanceof Merchant
+            ? (string) $user->id
+            : (string) $user->merchant_id;
+
+        if ($userMerchantId !== (string) $merchantId) {
+            abort(403);
+        }
     }
 
     protected function resolveCloseUrl(string $type): string
