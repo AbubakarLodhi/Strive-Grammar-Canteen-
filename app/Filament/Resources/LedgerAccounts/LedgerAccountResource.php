@@ -8,6 +8,7 @@ use App\Filament\Resources\LedgerAccounts\Pages\ListLedgerAccounts;
 use App\Filament\Resources\LedgerAccounts\Schemas\LedgerAccountForm;
 use App\Filament\Resources\LedgerAccounts\Tables\LedgerAccountsTable;
 use App\Models\LedgerAccount;
+use App\Services\Inventory\CanteenStockImporter;
 use App\Support\FinanceAccess;
 use BackedEnum;
 use Filament\Resources\Resource;
@@ -53,12 +54,22 @@ class LedgerAccountResource extends Resource
     public static function canDelete(Model $record): bool
     {
         return FinanceAccess::can('ledger_accounts', 'delete')
-            && ! $record->is_system;
+            && ! $record->is_system
+            && ! $record->isVendorPayable();
     }
 
     public static function getEloquentQuery(): Builder
     {
-        return FinanceAccess::scopeMerchant(parent::getEloquentQuery());
+        return FinanceAccess::scopeMerchant(parent::getEloquentQuery())
+            ->where('name', '!=', CanteenStockImporter::OPENING_VENDOR_NAME)
+            ->whereDoesntHave('vendor', function (Builder $query): void {
+                $query->where(function (Builder $builder): void {
+                    $builder
+                        ->where('name', CanteenStockImporter::OPENING_VENDOR_NAME)
+                        ->orWhere('reference', CanteenStockImporter::OPENING_VENDOR_REFERENCE)
+                        ->orWhere('email', CanteenStockImporter::OPENING_VENDOR_EMAIL);
+                });
+            });
     }
 
     public static function form(Schema $schema): Schema

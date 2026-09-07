@@ -13,6 +13,7 @@ use App\Models\Merchant;
 use App\Models\PermissionModule;
 use App\Models\User;
 use App\Models\Vendor;
+use App\Services\Inventory\CanteenStockImporter;
 use BackedEnum;
 use Filament\Facades\Filament;
 use Filament\Resources\Resource;
@@ -149,6 +150,8 @@ class VendorResource extends Resource
         $query
             ->withoutTrashed()
             ->where('merchant_id', $merchantId);
+
+        CanteenStockImporter::scopeExcludeOpeningStockVendors($query);
 
         $branchIds = static::normalizeIds($limitToBranchIds);
 

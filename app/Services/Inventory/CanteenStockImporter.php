@@ -14,8 +14,10 @@ use App\Models\Purchase;
 use App\Models\PurchaseItem;
 use App\Models\PurchaseItemVariant;
 use App\Models\Vendor;
+use App\Services\Finance\FinanceLedger;
 use App\Support\GeoFormFields;
 use App\Support\ProductStockAvailability;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -27,6 +29,50 @@ class CanteenStockImporter
 
     public const OPENING_VENDOR_NAME = 'Opening Stock Sheet';
 
+    public const OPENING_VENDOR_REFERENCE = 'Stock sheet import';
+
+    public const OPENING_VENDOR_EMAIL = 'opening-stock@strive.local';
+
+    public static function isOpeningStockPurchase(?Purchase $purchase): bool
+    {
+        if (! $purchase) {
+            return false;
+        }
+
+        return self::isOpeningStockPurchaseNo($purchase->purchase_no);
+    }
+
+    public static function isOpeningStockVendor(?Vendor $vendor): bool
+    {
+        if (! $vendor) {
+            return false;
+        }
+
+        return (string) $vendor->name === self::OPENING_VENDOR_NAME
+            || (string) $vendor->reference === self::OPENING_VENDOR_REFERENCE
+            || (string) $vendor->email === self::OPENING_VENDOR_EMAIL;
+    }
+
+    public static function isOpeningStockPurchaseNo(?string $purchaseNo): bool
+    {
+        return (string) $purchaseNo === self::OPENING_PURCHASE_NO;
+    }
+
+    public static function scopeExcludeOpeningStockPurchases(Builder $query): Builder
+    {
+        return $query->where('purchase_no', '!=', self::OPENING_PURCHASE_NO);
+    }
+
+    public static function scopeExcludeOpeningStockVendors(Builder $query): Builder
+    {
+        return $query->whereNot(function (Builder $builder): void {
+            $builder
+                ->where('name', self::OPENING_VENDOR_NAME)
+                ->orWhere('reference', self::OPENING_VENDOR_REFERENCE)
+                ->orWhere('email', self::OPENING_VENDOR_EMAIL);
+        });
+    }
+
     /**
      * @return array{
      *     products_created: int,
@@ -34,7 +80,13 @@ class CanteenStockImporter
      *     rows_imported: int,
      *     total_quantity: float,
      *     skipped: int,
-     *     items: list<array{name: string, quantity: float, purchase_price: float, selling_price: float}>
+     *     items: list<array{name: string, quantity: float, purchase_price: float, selling_price: float}>,
+     *     sheet_products: int,
+     *     products_with_qty: int,
+     *     products_zero_qty: int,
+     *     sheet_total_quantity: float,
+     *     sheet_purchase_value: float,
+     *     sheet_selling_value: float
      * }
      */
     public function importFromPath(string $path, Merchant $merchant, ?string $createdBy = null): array
@@ -56,7 +108,13 @@ class CanteenStockImporter
      *     rows_imported: int,
      *     total_quantity: float,
      *     skipped: int,
-     *     items: list<array{name: string, quantity: float, purchase_price: float, selling_price: float}>
+     *     items: list<array{name: string, quantity: float, purchase_price: float, selling_price: float}>,
+     *     sheet_products: int,
+     *     products_with_qty: int,
+     *     products_zero_qty: int,
+     *     sheet_total_quantity: float,
+     *     sheet_purchase_value: float,
+     *     sheet_selling_value: float
      * }
      */
     public function importRows(array $rows, Merchant $merchant, ?string $createdBy = null): array
@@ -95,7 +153,7 @@ class CanteenStockImporter
                     'paid_amount' => 0,
                     'due_amount' => 0,
                     'payment_type' => 'credit',
-                    'notes' => 'Stock imported from canteen stock sheet. Re-upload replaces this purchase.',
+                    'notes' => 'Opening stock. Managed from Opening Stock page; not shown in Purchases or Chart of Accounts.',
                     'created_by' => $createdBy,
                     'deleted_at' => null,
                 ],
@@ -248,18 +306,170 @@ class CanteenStockImporter
                 'due_amount' => $subtotal,
                 'payment_type' => 'credit',
                 'purchase_date' => now()->toDateString(),
-                'notes' => 'Stock imported from canteen stock sheet. Re-upload replaces this purchase.',
+                'notes' => 'Opening stock. Managed from Opening Stock page; not shown in Purchases or Chart of Accounts.',
             ])->save();
+
+            app(FinanceLedger::class)->purgeOpeningStockLedger($merchant->id);
         });
 
-        return [
+        return array_merge([
             'products_created' => $created,
             'products_updated' => $updated,
             'rows_imported' => count($rows) - $skipped,
             'total_quantity' => $totalQuantity,
             'skipped' => $skipped,
             'items' => $rows,
+        ], self::summarizeSheetRows($rows));
+    }
+
+    /**
+     * @param  list<array{name: string, quantity: float, purchase_price: float, selling_price: float}>  $rows
+     * @return array{
+     *     sheet_products: int,
+     *     products_with_qty: int,
+     *     products_zero_qty: int,
+     *     sheet_total_quantity: float,
+     *     sheet_purchase_value: float,
+     *     sheet_selling_value: float
+     * }
+     */
+    public static function summarizeSheetRows(array $rows): array
+    {
+        $withQty = 0;
+        $zeroQty = 0;
+        $totalQuantity = 0.0;
+        $purchaseValue = 0.0;
+        $sellingValue = 0.0;
+
+        foreach ($rows as $row) {
+            $quantity = max(0, round((float) ($row['quantity'] ?? 0), 2));
+            $purchasePrice = max(0, round((float) ($row['purchase_price'] ?? 0), 2));
+            $sellingPrice = max(0, round((float) ($row['selling_price'] ?? 0), 2));
+
+            $totalQuantity = round($totalQuantity + $quantity, 2);
+            $purchaseValue = round($purchaseValue + ($quantity * $purchasePrice), 2);
+            $sellingValue = round($sellingValue + ($quantity * $sellingPrice), 2);
+
+            if ($quantity > 0) {
+                $withQty++;
+            } else {
+                $zeroQty++;
+            }
+        }
+
+        return [
+            'sheet_products' => count($rows),
+            'products_with_qty' => $withQty,
+            'products_zero_qty' => $zeroQty,
+            'sheet_total_quantity' => $totalQuantity,
+            'sheet_purchase_value' => $purchaseValue,
+            'sheet_selling_value' => $sellingValue,
         ];
+    }
+
+    /**
+     * Attach live inventory (opening + later purchases − sales) to a sheet result payload.
+     *
+     * @param  array<string, mixed>  $result
+     * @return array<string, mixed>
+     */
+    public function withLiveStock(array $result, string $merchantId): array
+    {
+        $items = $result['items'] ?? [];
+
+        if (! is_array($items) || $items === []) {
+            return $result;
+        }
+
+        $skuByIndex = [];
+        $skus = [];
+
+        foreach ($items as $index => $item) {
+            $name = trim((string) ($item['name'] ?? ''));
+            $sku = $this->skuFor($this->normalizeName($name));
+            $skuByIndex[$index] = $sku;
+            $skus[$sku] = true;
+        }
+
+        $products = Product::query()
+            ->withoutTrashed()
+            ->where('merchant_id', $merchantId)
+            ->whereIn('sku', array_keys($skus))
+            ->with(['variants' => fn ($query) => $query->withoutTrashed()->where('is_active', true)])
+            ->get()
+            ->keyBy('sku');
+
+        $variantIds = $products
+            ->flatMap(fn (Product $product) => $product->variants->pluck('id'))
+            ->filter()
+            ->values();
+
+        $openingByVariant = [];
+
+        if ($variantIds->isNotEmpty()) {
+            $openingByVariant = DB::table('purchase_item_variants as piv')
+                ->join('purchase_items as pi', 'pi.id', '=', 'piv.purchase_item_id')
+                ->join('purchases as p', 'p.id', '=', 'pi.purchase_id')
+                ->where('p.merchant_id', $merchantId)
+                ->where('p.purchase_no', self::OPENING_PURCHASE_NO)
+                ->whereNull('p.deleted_at')
+                ->whereIn('piv.product_variant_id', $variantIds->all())
+                ->groupBy('piv.product_variant_id')
+                ->selectRaw('piv.product_variant_id, SUM(piv.quantity) as quantity')
+                ->pluck('quantity', 'product_variant_id')
+                ->map(fn ($qty): float => (float) $qty)
+                ->all();
+        }
+
+        $liveTotalQuantity = 0.0;
+        $addedByPurchasesTotal = 0.0;
+        $soldTotal = 0.0;
+        $enriched = [];
+
+        foreach ($items as $index => $item) {
+            $sku = $skuByIndex[$index];
+            $product = $products->get($sku);
+            $variant = $product?->variants->first();
+
+            $sheetQty = max(0, round((float) ($item['quantity'] ?? 0), 2));
+            $currentStock = 0.0;
+            $purchasedTotal = 0.0;
+            $openingPurchased = 0.0;
+            $sold = 0.0;
+            $addedByPurchases = 0.0;
+
+            if ($variant) {
+                $purchasedTotal = ProductStockAvailability::purchasedQuantity($variant->id);
+                $sold = ProductStockAvailability::soldQuantity($variant->id);
+                $currentStock = ProductStockAvailability::variantStock($variant->id);
+                $openingPurchased = (float) ($openingByVariant[$variant->id] ?? 0);
+                $addedByPurchases = max(0, round($purchasedTotal - $openingPurchased, 2));
+            } elseif ($product) {
+                $purchasedTotal = ProductStockAvailability::purchasedQuantityForProduct($product->id);
+                $sold = ProductStockAvailability::soldQuantityForProduct($product->id);
+                $currentStock = ProductStockAvailability::productTotalStock($product);
+                $addedByPurchases = max(0, round($purchasedTotal - $sheetQty, 2));
+            }
+
+            $liveTotalQuantity = round($liveTotalQuantity + $currentStock, 2);
+            $addedByPurchasesTotal = round($addedByPurchasesTotal + $addedByPurchases, 2);
+            $soldTotal = round($soldTotal + $sold, 2);
+
+            $enriched[] = array_merge($item, [
+                'current_stock' => $currentStock,
+                'purchased_total' => $purchasedTotal,
+                'opening_purchased' => $openingPurchased,
+                'added_by_purchases' => $addedByPurchases,
+                'sold' => $sold,
+            ]);
+        }
+
+        $result['items'] = $enriched;
+        $result['live_total_quantity'] = $liveTotalQuantity;
+        $result['added_by_purchases_total'] = $addedByPurchasesTotal;
+        $result['sold_total'] = $soldTotal;
+
+        return $result;
     }
 
     /**
@@ -488,12 +698,12 @@ class CanteenStockImporter
             ],
             [
                 'id' => (string) Str::uuid(),
-                'email' => 'opening-stock@strive.local',
+                'email' => self::OPENING_VENDOR_EMAIL,
                 'phone' => null,
                 'address' => 'Internal opening stock',
                 'country_id' => $countryId,
                 'city_id' => $cityId,
-                'reference' => 'Stock sheet import',
+                'reference' => self::OPENING_VENDOR_REFERENCE,
                 'postal_code' => '54000',
             ],
         );

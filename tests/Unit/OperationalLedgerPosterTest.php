@@ -53,6 +53,19 @@ class OperationalLedgerPosterTest extends TestCase
         $this->assertPlanBalances($lines);
     }
 
+    public function test_purchase_line_descriptions_include_the_vendor_name(): void
+    {
+        $lines = $this->poster()->purchaseLinePlan(1000, 400, 600, false, 'Paper House', '2001');
+
+        $this->assertSame([
+            ['code' => '5000', 'debit' => 1000.0, 'credit' => 0, 'description' => 'Purchases — Paper House'],
+            ['code' => '1000', 'debit' => 0, 'credit' => 400.0, 'description' => 'Amount paid — Paper House'],
+            ['code' => '2001', 'debit' => 0, 'credit' => 600.0, 'description' => 'Amount payable — Paper House'],
+        ], $lines);
+
+        $this->assertPlanBalances($lines);
+    }
+
     public function test_expense_debits_operating_expenses_and_credits_cash(): void
     {
         $lines = $this->poster()->expenseLinePlan(250.5);

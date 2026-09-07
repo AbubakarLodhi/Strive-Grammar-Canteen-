@@ -137,13 +137,19 @@ class JournalVoucherForm
         }
 
         $ledger = app(FinanceLedger::class);
-        $payable = $ledger->accountByCode($merchantId, '2000');
+        $vendor = Vendor::query()->withTrashed()->find($vendorId);
+
+        if (! $vendor) {
+            return;
+        }
+
+        $payable = $ledger->ensureVendorPayableAccount($vendor);
         $payFromCode = ($get('payment_method') ?? 'cash') === 'bank'
             ? FinanceLedger::BANK_ACCOUNT_CODE
             : FinanceLedger::CASH_ACCOUNT_CODE;
         $payFrom = $ledger->accountByCode($merchantId, $payFromCode);
 
-        $vendorName = Vendor::query()->whereKey($vendorId)->value('name') ?? 'Vendor';
+        $vendorName = trim((string) $vendor->name) !== '' ? $vendor->name : 'Vendor';
 
         $set('lines', [
             [

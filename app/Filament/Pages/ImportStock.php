@@ -4,6 +4,7 @@ namespace App\Filament\Pages;
 
 use App\Models\Merchant;
 use App\Models\User;
+use App\Services\Finance\FinanceLedger;
 use App\Services\Inventory\CanteenStockImporter;
 use App\Support\FinanceAccess;
 use BackedEnum;
@@ -14,21 +15,22 @@ use Filament\Pages\Page;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 use Throwable;
 
 class ImportStock extends Page
 {
-    protected static string|BackedEnum|null $navigationIcon = Heroicon::ArrowUpTray;
+    protected static string|BackedEnum|null $navigationIcon = Heroicon::ArchiveBox;
 
     protected static string|\UnitEnum|null $navigationGroup = 'Inventory';
 
     protected static ?int $navigationSort = 5;
 
-    protected static ?string $title = 'Import Stock';
+    protected static ?string $title = 'Opening Stock';
 
-    protected static ?string $navigationLabel = 'Import Stock';
+    protected static ?string $navigationLabel = 'Opening Stock';
 
     protected string $view = 'filament.pages.import-stock';
 
@@ -59,6 +61,24 @@ class ImportStock extends Page
     public function mount(): void
     {
         $this->form->fill();
+
+        $user = Filament::auth()->user();
+        $merchantId = match (true) {
+            $user instanceof Merchant => $user->id,
+            $user instanceof User => $user->merchant_id,
+            default => null,
+        };
+
+        if (! $merchantId) {
+            return;
+        }
+
+        app(FinanceLedger::class)->purgeOpeningStockLedger($merchantId);
+
+        $cached = Cache::get($this->cacheKey($merchantId));
+        if (is_array($cached)) {
+            $this->lastResult = $this->withLiveStock($cached, $merchantId);
+        }
     }
 
     public function form(Schema $schema): Schema
@@ -66,11 +86,11 @@ class ImportStock extends Page
         return $schema
             ->statePath('data')
             ->components([
-                Section::make('Upload stock sheet')
-                    ->description('Upload the canteen Excel file (.xls / .xlsx) with columns: Product Name, Qty, Pr Price, Sell Price. Matching products are updated; stock quantities become the Qty in the file.')
+                Section::make('Introduce opening stock')
+                    ->description('Upload the stock Excel file (.xls / .xlsx) with columns: Product Name, Qty, Pr Price, Sell Price. Later purchases of the same products increase current stock automatically (opening + purchases − sales). Opening stock is not listed under Purchases or Chart of Accounts payables.')
                     ->schema([
                         FileUpload::make('stock_file')
-                            ->label('Stock Excel file')
+                            ->label('Opening stock Excel file')
                             ->acceptedFileTypes([
                                 'application/vnd.ms-excel',
                                 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -81,7 +101,7 @@ class ImportStock extends Page
                             ->directory('imports/uploads')
                             ->visibility('private')
                             ->required()
-                            ->helperText('Re-uploading replaces the managed STOCK-SHEET purchase so on-hand stock matches the file.'),
+                            ->helperText('Re-uploading refreshes the sheet baseline. Current stock still includes any later purchases and subtracts sales.'),
                     ]),
             ]);
     }
@@ -118,26 +138,40 @@ class ImportStock extends Page
                 Filament::auth()->user() instanceof User ? Filament::auth()->id() : null,
             );
 
-            $this->lastResult = $result;
+            Cache::put($this->cacheKey($merchant->id), $result, now()->addDays(60));
+            $this->lastResult = $this->withLiveStock($result, $merchant->id);
             $this->form->fill(['stock_file' => null]);
 
             Notification::make()
-                ->title('Stock imported')
+                ->title('Opening stock updated')
                 ->body(sprintf(
-                    '%d created, %d updated, %d rows, total qty %s',
-                    $result['products_created'],
-                    $result['products_updated'],
-                    $result['rows_imported'],
-                    number_format($result['total_quantity']),
+                    '%d products · sheet qty %s · current stock %s',
+                    $result['sheet_products'] ?? $result['rows_imported'],
+                    number_format((float) ($result['sheet_total_quantity'] ?? $result['total_quantity'])),
+                    number_format((float) ($this->lastResult['live_total_quantity'] ?? 0)),
                 ))
                 ->success()
                 ->send();
         } catch (RuntimeException|Throwable $exception) {
             Notification::make()
-                ->title('Import failed')
+                ->title('Opening stock import failed')
                 ->body($exception->getMessage())
                 ->danger()
                 ->send();
         }
+    }
+
+    /**
+     * @param  array<string, mixed>  $result
+     * @return array<string, mixed>
+     */
+    protected function withLiveStock(array $result, string $merchantId): array
+    {
+        return app(CanteenStockImporter::class)->withLiveStock($result, $merchantId);
+    }
+
+    protected function cacheKey(string $merchantId): string
+    {
+        return 'opening-stock-last-result:'.$merchantId;
     }
 }

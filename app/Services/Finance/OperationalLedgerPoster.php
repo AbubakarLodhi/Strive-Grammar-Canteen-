@@ -8,6 +8,7 @@ use App\Models\Purchase;
 use App\Models\PurchaseReturn;
 use App\Models\Sale;
 use App\Models\SaleReturn;
+use App\Services\Inventory\CanteenStockImporter;
 use Illuminate\Database\Eloquent\Model;
 
 class OperationalLedgerPoster
@@ -38,8 +39,14 @@ class OperationalLedgerPoster
     /**
      * @return list<array{code: string, debit: float, credit: float, description: string}>
      */
-    public function purchaseLinePlan(float $total, float $paid, float $due, bool $paidFromBank = false): array
-    {
+    public function purchaseLinePlan(
+        float $total,
+        float $paid,
+        float $due,
+        bool $paidFromBank = false,
+        ?string $vendorName = null,
+        string $payableCode = '2000',
+    ): array {
         $total = round(max(0, $total), 2);
         $paid = round(max(0, $paid), 2);
         $due = round(max(0, $due), 2);
@@ -49,10 +56,12 @@ class OperationalLedgerPoster
             $paid = round(max(0, $total - $due), 2);
         }
 
+        $vendorSuffix = filled($vendorName) ? ' — '.$vendorName : '';
+
         return $this->compactLines([
-            ['code' => '5000', 'debit' => $total, 'credit' => 0, 'description' => 'Purchases'],
-            ['code' => $paidFromBank ? '1010' : '1000', 'debit' => 0, 'credit' => $paid, 'description' => 'Amount paid'],
-            ['code' => '2000', 'debit' => 0, 'credit' => $due, 'description' => 'Amount payable'],
+            ['code' => '5000', 'debit' => $total, 'credit' => 0, 'description' => 'Purchases'.$vendorSuffix],
+            ['code' => $paidFromBank ? '1010' : '1000', 'debit' => 0, 'credit' => $paid, 'description' => 'Amount paid'.$vendorSuffix],
+            ['code' => $payableCode, 'debit' => 0, 'credit' => $due, 'description' => 'Amount payable'.$vendorSuffix],
         ]);
     }
 
@@ -99,14 +108,20 @@ class OperationalLedgerPoster
     /**
      * @return list<array{code: string, debit: float, credit: float, description: string}>
      */
-    public function purchaseReturnLinePlan(float $total, bool $refundFromBank = false, bool $creditVendor = false): array
-    {
+    public function purchaseReturnLinePlan(
+        float $total,
+        bool $refundFromBank = false,
+        bool $creditVendor = false,
+        ?string $vendorName = null,
+        string $payableCode = '2000',
+    ): array {
         $total = round(max(0, $total), 2);
-        $settlementCode = $creditVendor ? '2000' : ($refundFromBank ? '1010' : '1000');
+        $settlementCode = $creditVendor ? $payableCode : ($refundFromBank ? '1010' : '1000');
+        $vendorSuffix = filled($vendorName) ? ' — '.$vendorName : '';
 
         return $this->compactLines([
-            ['code' => $settlementCode, 'debit' => $total, 'credit' => 0, 'description' => 'Return settlement'],
-            ['code' => '5000', 'debit' => 0, 'credit' => $total, 'description' => 'Purchase return'],
+            ['code' => $settlementCode, 'debit' => $total, 'credit' => 0, 'description' => 'Return settlement'.$vendorSuffix],
+            ['code' => '5000', 'debit' => 0, 'credit' => $total, 'description' => 'Purchase return'.$vendorSuffix],
         ]);
     }
 
@@ -131,20 +146,35 @@ class OperationalLedgerPoster
 
     public function syncPurchase(Purchase $purchase): void
     {
-        $purchase->loadMissing('payments');
+        if (CanteenStockImporter::isOpeningStockPurchase($purchase)) {
+            $this->ledger->removeForSource($purchase);
+
+            return;
+        }
+
+        $purchase->loadMissing(['payments', 'vendor']);
+        $vendorName = $this->partyName($purchase->vendor?->name);
+        $payableCode = '2000';
+
+        if ($purchase->vendor) {
+            $payableCode = $this->ledger->ensureVendorPayableAccount($purchase->vendor)->code;
+        }
 
         $this->postPlan(
             $purchase,
             $purchase->merchant_id,
             $purchase->purchase_date,
-            'Purchase '.$purchase->purchase_no,
+            'Purchase '.$purchase->purchase_no.($vendorName ? ' — '.$vendorName : ''),
             $this->purchaseLinePlan(
                 (float) $purchase->total_amount,
                 (float) $purchase->paid_amount,
                 (float) $purchase->due_amount,
                 $this->documentUsesBank($purchase),
+                $vendorName,
+                $payableCode,
             ),
             $purchase->created_by,
+            $purchase->vendor_id,
         );
     }
 
@@ -200,21 +230,30 @@ class OperationalLedgerPoster
 
     public function syncPurchaseReturn(PurchaseReturn $return): void
     {
-        $return->loadMissing('purchase.payments');
+        $return->loadMissing('purchase.payments', 'purchase.vendor');
         $purchase = $return->purchase;
         $creditVendor = $purchase?->payment_type === 'credit' && (float) ($purchase->due_amount ?? 0) > 0;
+        $vendorName = $this->partyName($purchase?->vendor?->name);
+        $payableCode = '2000';
+
+        if ($purchase?->vendor) {
+            $payableCode = $this->ledger->ensureVendorPayableAccount($purchase->vendor)->code;
+        }
 
         $this->postPlan(
             $return,
             $return->merchant_id,
             $return->return_date,
-            'Purchase return '.$return->return_no,
+            'Purchase return '.$return->return_no.($vendorName ? ' — '.$vendorName : ''),
             $this->purchaseReturnLinePlan(
                 (float) $return->total_amount,
                 $purchase ? $this->documentUsesBank($purchase) : false,
                 $creditVendor,
+                $vendorName,
+                $payableCode,
             ),
             $return->created_by,
+            $purchase?->vendor_id,
         );
     }
 
@@ -247,6 +286,7 @@ class OperationalLedgerPoster
         string $narration,
         array $plan,
         ?string $createdBy,
+        ?string $vendorId = null,
     ): void {
         $lines = [];
 
@@ -260,7 +300,14 @@ class OperationalLedgerPoster
             ];
         }
 
-        $this->ledger->postOrReplaceForSource($source, $merchantId, $date, $narration, $lines, $createdBy);
+        $this->ledger->postOrReplaceForSource($source, $merchantId, $date, $narration, $lines, $createdBy, $vendorId);
+    }
+
+    protected function partyName(?string $name): ?string
+    {
+        $name = trim((string) $name);
+
+        return $name !== '' ? $name : null;
     }
 
     private function documentUsesBank(Sale|Purchase $document): bool

@@ -8,6 +8,9 @@ use App\Models\BankDeposit;
 use App\Models\JournalVoucher;
 use App\Models\LedgerAccount;
 use App\Models\Merchant;
+use App\Models\Purchase;
+use App\Models\Vendor;
+use App\Services\Inventory\CanteenStockImporter;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -207,6 +210,151 @@ class FinanceLedger
         return $account;
     }
 
+    public function ensureVendorPayableAccount(Vendor $vendor): LedgerAccount
+    {
+        if (CanteenStockImporter::isOpeningStockVendor($vendor)) {
+            throw ValidationException::withMessages([
+                'ledger' => 'Opening stock is not posted to Chart of Accounts payables.',
+            ]);
+        }
+
+        $vendor->loadMissing('merchant');
+
+        if ($vendor->merchant) {
+            $this->provisionDefaultAccounts($vendor->merchant);
+        }
+
+        $existing = LedgerAccount::query()
+            ->where('merchant_id', $vendor->merchant_id)
+            ->where('vendor_id', $vendor->id)
+            ->first();
+
+        $name = trim((string) $vendor->name);
+        if ($name === '') {
+            $name = 'Vendor';
+        }
+
+        if ($existing) {
+            if ($existing->name !== $name) {
+                $existing->forceFill(['name' => $name])->save();
+            }
+
+            return $existing;
+        }
+
+        return LedgerAccount::query()->create([
+            'merchant_id' => $vendor->merchant_id,
+            'vendor_id' => $vendor->id,
+            'code' => $this->nextVendorPayableCode($vendor->merchant_id),
+            'name' => $name,
+            'type' => LedgerAccountType::Liability,
+            'is_bank' => false,
+            'is_system' => false,
+            'is_active' => true,
+            'opening_balance' => 0,
+        ]);
+    }
+
+    public function nextVendorPayableCode(string $merchantId): string
+    {
+        $used = LedgerAccount::query()
+            ->where('merchant_id', $merchantId)
+            ->pluck('code')
+            ->flip()
+            ->all();
+
+        for ($code = 2001; $code <= 2999; $code++) {
+            if (! isset($used[(string) $code])) {
+                return (string) $code;
+            }
+        }
+
+        return $this->nextLedgerAccountCode($merchantId);
+    }
+
+    /**
+     * Create missing vendor payable accounts and re-post purchases so balances move off Accounts Payable.
+     */
+    public function backfillVendorPayableAccounts(string $merchantId): void
+    {
+        $vendorIds = Purchase::query()
+            ->where('merchant_id', $merchantId)
+            ->whereNotNull('vendor_id')
+            ->where('purchase_no', '!=', CanteenStockImporter::OPENING_PURCHASE_NO)
+            ->distinct()
+            ->pluck('vendor_id');
+
+        if ($vendorIds->isEmpty()) {
+            return;
+        }
+
+        $existingVendorIds = LedgerAccount::query()
+            ->where('merchant_id', $merchantId)
+            ->whereIn('vendor_id', $vendorIds)
+            ->pluck('vendor_id');
+
+        $missingIds = $vendorIds->diff($existingVendorIds);
+
+        if ($missingIds->isEmpty()) {
+            return;
+        }
+
+        $vendors = Vendor::query()
+            ->withTrashed()
+            ->where('merchant_id', $merchantId)
+            ->whereIn('id', $missingIds->all())
+            ->get()
+            ->reject(fn (Vendor $vendor): bool => CanteenStockImporter::isOpeningStockVendor($vendor));
+
+        $poster = app(OperationalLedgerPoster::class);
+
+        foreach ($vendors as $vendor) {
+            $this->ensureVendorPayableAccount($vendor);
+
+            Purchase::query()
+                ->where('merchant_id', $merchantId)
+                ->where('vendor_id', $vendor->id)
+                ->where('purchase_no', '!=', CanteenStockImporter::OPENING_PURCHASE_NO)
+                ->get()
+                ->each(fn (Purchase $purchase) => $poster->syncPurchase($purchase));
+        }
+    }
+
+    /**
+     * Remove opening-stock journal vouchers and any vendor payable ledger account created for them.
+     */
+    public function purgeOpeningStockLedger(string $merchantId): void
+    {
+        Purchase::withTrashed()
+            ->where('merchant_id', $merchantId)
+            ->where('purchase_no', CanteenStockImporter::OPENING_PURCHASE_NO)
+            ->get()
+            ->each(fn (Purchase $purchase) => $this->removeForSource($purchase));
+
+        $vendorIds = Vendor::withTrashed()
+            ->where('merchant_id', $merchantId)
+            ->where(function ($query): void {
+                $query
+                    ->where('name', CanteenStockImporter::OPENING_VENDOR_NAME)
+                    ->orWhere('reference', CanteenStockImporter::OPENING_VENDOR_REFERENCE)
+                    ->orWhere('email', CanteenStockImporter::OPENING_VENDOR_EMAIL);
+            })
+            ->pluck('id');
+
+        if ($vendorIds->isEmpty()) {
+            return;
+        }
+
+        LedgerAccount::query()
+            ->where('merchant_id', $merchantId)
+            ->whereIn('vendor_id', $vendorIds)
+            ->get()
+            ->each(function (LedgerAccount $account): void {
+                $account->journalLines()->delete();
+                $account->delete();
+            });
+    }
+
     public function syncOpeningCash(Merchant $merchant): void
     {
         $this->provisionDefaultAccounts($merchant);
@@ -232,6 +380,7 @@ class FinanceLedger
         string $narration,
         array $lines,
         ?string $createdBy = null,
+        ?string $vendorId = null,
     ): ?JournalVoucher {
         $lines = array_values(array_filter(
             $lines,
@@ -247,7 +396,7 @@ class FinanceLedger
 
         $this->assertBalanced($lines);
 
-        return DB::transaction(function () use ($source, $merchantId, $voucherDate, $narration, $lines, $createdBy): JournalVoucher {
+        return DB::transaction(function () use ($source, $merchantId, $voucherDate, $narration, $lines, $createdBy, $vendorId): JournalVoucher {
             $voucher = JournalVoucher::withTrashed()
                 ->where('source_type', $source->getMorphClass())
                 ->where('source_id', $source->getKey())
@@ -263,6 +412,7 @@ class FinanceLedger
                     'voucher_date' => $voucherDate,
                     'narration' => $narration,
                     'created_by' => $createdBy ?? $voucher->created_by,
+                    'vendor_id' => $vendorId,
                 ])->save();
 
                 $voucher->lines()->delete();
@@ -274,6 +424,7 @@ class FinanceLedger
                     'narration' => $narration,
                     'status' => FinanceDocumentStatus::Draft,
                     'created_by' => $createdBy,
+                    'vendor_id' => $vendorId,
                     'source_type' => $source->getMorphClass(),
                     'source_id' => $source->getKey(),
                 ]);

@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\LedgerAccounts\Tables;
 
+use App\Enums\FinanceDocumentStatus;
 use App\Enums\LedgerAccountType;
 use App\Filament\Resources\LedgerAccounts\LedgerAccountResource;
 use App\Models\LedgerAccount;
@@ -15,17 +16,41 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 class LedgerAccountsTable
 {
     public static function configure(Table $table): Table
     {
         return $table
+            ->modifyQueryUsing(function (Builder $query): void {
+                $query
+                    ->withSum([
+                        'journalLines as posted_debits' => fn (Builder $lines): Builder => $lines->whereHas(
+                            'journalVoucher',
+                            fn (Builder $voucher): Builder => $voucher->where('status', FinanceDocumentStatus::Posted->value)
+                        ),
+                    ], 'debit')
+                    ->withSum([
+                        'journalLines as posted_credits' => fn (Builder $lines): Builder => $lines->whereHas(
+                            'journalVoucher',
+                            fn (Builder $voucher): Builder => $voucher->where('status', FinanceDocumentStatus::Posted->value)
+                        ),
+                    ], 'credit');
+            })
             ->columns([
                 TextColumn::make('name')
                     ->label('Account')
                     ->searchable()
-                    ->sortable(),
+                    ->sortable()
+                    ->description(fn (LedgerAccount $record): ?string => $record->isVendorPayable()
+                        ? 'Vendor payable'
+                        : null),
+                TextColumn::make('code')
+                    ->label('Code')
+                    ->searchable()
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('type')
                     ->label('Type')
                     ->badge()
@@ -42,15 +67,26 @@ class LedgerAccountsTable
                     ->label('Opening')
                     ->numeric(2)
                     ->sortable(),
+                TextColumn::make('posted_debits')
+                    ->label('Debit')
+                    ->numeric(2)
+                    ->placeholder('0.00')
+                    ->alignRight(),
+                TextColumn::make('posted_credits')
+                    ->label('Credit')
+                    ->numeric(2)
+                    ->placeholder('0.00')
+                    ->alignRight(),
                 TextColumn::make('posted_balance')
                     ->label('Balance')
                     ->state(fn (LedgerAccount $record): string => $record->postedBalance())
-                    ->numeric(2),
+                    ->numeric(2)
+                    ->alignRight(),
                 IconColumn::make('is_active')
                     ->label('Active')
                     ->boolean(),
             ])
-            ->defaultSort('name')
+            ->defaultSort('code')
             ->filters([
                 SelectFilter::make('type')
                     ->options(LedgerAccountType::options()),
@@ -69,7 +105,9 @@ class LedgerAccountsTable
                     ->color('danger')
                     ->label('')
                     ->tooltip('Delete')
-                    ->visible(fn (LedgerAccount $record): bool => FinanceAccess::can('ledger_accounts', 'delete') && ! $record->is_system),
+                    ->visible(fn (LedgerAccount $record): bool => FinanceAccess::can('ledger_accounts', 'delete')
+                        && ! $record->is_system
+                        && ! $record->isVendorPayable()),
             ])
             ->recordUrl(fn (LedgerAccount $record): ?string => FinanceAccess::can('ledger_accounts', 'update')
                 ? LedgerAccountResource::getUrl('edit', ['record' => $record])

@@ -30,6 +30,7 @@ class LedgerAccount extends Model implements Auditable
     /** @var list<string> */
     protected $fillable = [
         'merchant_id',
+        'vendor_id',
         'code',
         'name',
         'account_number',
@@ -57,9 +58,19 @@ class LedgerAccount extends Model implements Auditable
         return $this->belongsTo(Merchant::class);
     }
 
+    public function vendor(): BelongsTo
+    {
+        return $this->belongsTo(Vendor::class)->withTrashed();
+    }
+
     public function journalLines(): HasMany
     {
         return $this->hasMany(JournalVoucherLine::class);
+    }
+
+    public function isVendorPayable(): bool
+    {
+        return filled($this->vendor_id);
     }
 
     public function scopeActive(Builder $query): Builder

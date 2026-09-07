@@ -13,6 +13,7 @@ use App\Models\Merchant;
 use App\Models\PermissionModule;
 use App\Models\Purchase;
 use App\Models\User;
+use App\Services\Inventory\CanteenStockImporter;
 use BackedEnum;
 use Filament\Facades\Filament;
 use Filament\Resources\Resource;
@@ -101,6 +102,8 @@ class PurchaseResource extends Resource
         if (! $merchantId) {
             return $query->whereRaw('1 = 0');
         }
+
+        CanteenStockImporter::scopeExcludeOpeningStockPurchases($query);
 
         // 🟢 MERCHANT → all purchases
         if ($user instanceof Merchant) {
