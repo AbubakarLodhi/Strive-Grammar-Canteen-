@@ -8,6 +8,7 @@ use App\Models\JournalVoucherLine;
 use App\Models\LedgerAccount;
 use App\Support\FinanceAccess;
 use BackedEnum;
+use Filament\Actions\Action;
 use Filament\Forms\Components\DatePicker;
 use Filament\Pages\Page;
 use Filament\Support\Icons\Heroicon;
@@ -37,9 +38,19 @@ class GeneralLedger extends Page implements HasTable
 
     public ?string $selectedAccountId = null;
 
+    public ?string $dateFrom = null;
+
+    public ?string $dateTo = null;
+
     public static function canAccess(): bool
     {
         return FinanceAccess::can('finance_ledger');
+    }
+
+    public function mount(): void
+    {
+        $this->dateFrom = now()->startOfMonth()->toDateString();
+        $this->dateTo = now()->toDateString();
     }
 
     public function openAccount(string $accountId): void
@@ -51,6 +62,16 @@ class GeneralLedger extends Page implements HasTable
     public function clearAccount(): void
     {
         $this->selectedAccountId = null;
+        $this->resetTable();
+    }
+
+    public function updatedDateFrom(): void
+    {
+        $this->resetTable();
+    }
+
+    public function updatedDateTo(): void
+    {
         $this->resetTable();
     }
 
@@ -91,8 +112,13 @@ class GeneralLedger extends Page implements HasTable
                     ->label('Account')
                     ->searchable()
                     ->sortable()
-                    ->url(fn (LedgerAccount $record): string => '#')
-                    ->action(fn (LedgerAccount $record) => $this->openAccount($record->id)),
+                    ->color('primary')
+                    ->weight('medium')
+                    ->action(
+                        Action::make('openLedger')
+                            ->label('Open ledger')
+                            ->action(fn (LedgerAccount $record) => $this->openAccount((string) $record->id))
+                    ),
                 TextColumn::make('type')
                     ->badge()
                     ->formatStateUsing(fn (LedgerAccountType|string $state): string => $state instanceof LedgerAccountType ? $state->label() : $state),
@@ -104,6 +130,13 @@ class GeneralLedger extends Page implements HasTable
                     ->state(fn (LedgerAccount $record): string => $record->postedBalance())
                     ->numeric(2),
             ])
+            ->recordActions([
+                Action::make('openLedger')
+                    ->label('Open')
+                    ->icon(Heroicon::Eye)
+                    ->action(fn (LedgerAccount $record) => $this->openAccount((string) $record->id)),
+            ])
+            ->recordAction('openLedger')
             ->defaultSort('code')
             ->filters([
                 SelectFilter::make('type')->options(LedgerAccountType::options()),
@@ -114,15 +147,19 @@ class GeneralLedger extends Page implements HasTable
     protected function transactionsTable(Table $table): Table
     {
         $accountId = $this->selectedAccountId;
+        $from = $this->dateFrom;
+        $to = $this->dateTo;
 
         return $table
             ->query(
                 JournalVoucherLine::query()
                     ->where('ledger_account_id', $accountId)
-                    ->whereHas('journalVoucher', fn (Builder $q) => $q
-                        ->where('status', FinanceDocumentStatus::Posted->value)
-                        ->when(FinanceAccess::merchantId(), fn ($qq, $mid) => $qq->where('merchant_id', $mid))
-                    )
+                    ->whereHas('journalVoucher', function (Builder $q) use ($from, $to): void {
+                        $q->where('status', FinanceDocumentStatus::Posted->value)
+                            ->when(FinanceAccess::merchantId(), fn ($qq, $mid) => $qq->where('merchant_id', $mid))
+                            ->when($from, fn ($qq) => $qq->whereDate('voucher_date', '>=', $from))
+                            ->when($to, fn ($qq) => $qq->whereDate('voucher_date', '<=', $to));
+                    })
                     ->with('journalVoucher')
             )
             ->columns([

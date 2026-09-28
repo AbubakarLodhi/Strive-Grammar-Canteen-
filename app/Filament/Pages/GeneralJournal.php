@@ -3,9 +3,12 @@
 namespace App\Filament\Pages;
 
 use App\Enums\FinanceDocumentStatus;
+use App\Filament\Exports\GeneralJournalExport;
 use App\Models\JournalVoucherLine;
 use App\Support\FinanceAccess;
 use BackedEnum;
+use Barryvdh\DomPDF\Facade\Pdf;
+use Filament\Actions\Action;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
@@ -14,6 +17,10 @@ use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
+use Maatwebsite\Excel\Facades\Excel;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Symfony\Component\HttpFoundation\Response;
 
 class GeneralJournal extends Page implements HasForms
 {
@@ -93,5 +100,63 @@ class GeneralJournal extends Page implements HasForms
                 'debit' => (float) $line->debit,
                 'credit' => (float) $line->credit,
             ]);
+    }
+
+    public function debitTotal(): float
+    {
+        return round((float) $this->rows->sum('debit'), 2);
+    }
+
+    public function creditTotal(): float
+    {
+        return round((float) $this->rows->sum('credit'), 2);
+    }
+
+    protected function getHeaderActions(): array
+    {
+        return [
+            Action::make('downloadPdf')
+                ->label('Download PDF')
+                ->icon('heroicon-s-arrow-down-tray')
+                ->color('danger')
+                ->action(fn () => $this->downloadPdf()),
+            Action::make('downloadExcel')
+                ->label('Download Excel')
+                ->icon('heroicon-s-table-cells')
+                ->color('success')
+                ->action(fn () => $this->downloadExcel()),
+        ];
+    }
+
+    private function downloadPdf(): Response
+    {
+        $rows = $this->rows;
+        $from = $this->data['date_from'] ?? null;
+        $to = $this->data['date_to'] ?? null;
+
+        return Pdf::loadView('exports.general-journal-pdf', [
+            'company' => config('branding.name'),
+            'rows' => $rows,
+            'debit_total' => $this->debitTotal(),
+            'credit_total' => $this->creditTotal(),
+            'period' => trim(($from ?: '…').' → '.($to ?: '…')),
+        ])
+            ->setPaper('a4', 'landscape')
+            ->download($this->exportFilename('pdf'));
+    }
+
+    private function downloadExcel(): BinaryFileResponse
+    {
+        return Excel::download(
+            new GeneralJournalExport($this->rows, $this->debitTotal(), $this->creditTotal()),
+            $this->exportFilename('xlsx'),
+        );
+    }
+
+    private function exportFilename(string $extension): string
+    {
+        $period = Str::slug(($this->data['date_from'] ?? 'from').'-'.($this->data['date_to'] ?? 'to'));
+
+        return 'general-journal-'.$period.'.'.$extension;
     }
 }

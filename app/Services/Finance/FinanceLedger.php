@@ -19,6 +19,7 @@ use App\Models\Purchase;
 use App\Models\Vendor;
 use App\Services\Inventory\CanteenStockImporter;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -431,7 +432,7 @@ class FinanceLedger
             } else {
                 $voucher = JournalVoucher::query()->create([
                     'merchant_id' => $merchantId,
-                    'voucher_no' => $this->nextVoucherNo($merchantId),
+                    'voucher_no' => $this->nextVoucherNo($merchantId, $voucherDate),
                     'voucher_date' => $voucherDate,
                     'narration' => $narration,
                     'status' => FinanceDocumentStatus::Draft,
@@ -468,26 +469,26 @@ class FinanceLedger
             });
     }
 
-    public function nextVoucherNo(string $merchantId): string
+    public function nextVoucherNo(string $merchantId, mixed $date = null): string
     {
-        return $this->nextDocumentNo($merchantId, 'JV', JournalVoucher::class, 'voucher_no');
+        return $this->nextDocumentNo($merchantId, 'JV', JournalVoucher::class, 'voucher_no', $date);
     }
 
-    public function nextDepositNo(string $merchantId): string
+    public function nextDepositNo(string $merchantId, mixed $date = null): string
     {
-        return $this->nextDocumentNo($merchantId, 'BD', BankDeposit::class, 'deposit_no');
+        return $this->nextDocumentNo($merchantId, 'BD', BankDeposit::class, 'deposit_no', $date);
     }
 
-    public function nextCashVoucherNo(string $merchantId, CashVoucherDirection $direction): string
+    public function nextCashVoucherNo(string $merchantId, CashVoucherDirection $direction, mixed $date = null): string
     {
         $prefix = $direction === CashVoucherDirection::Receiving ? 'CRV' : 'CPV';
 
-        return $this->nextDocumentNo($merchantId, $prefix, CashVoucher::class, 'voucher_no');
+        return $this->nextDocumentNo($merchantId, $prefix, CashVoucher::class, 'voucher_no', $date);
     }
 
-    public function nextOnlineTransferNo(string $merchantId): string
+    public function nextOnlineTransferNo(string $merchantId, mixed $date = null): string
     {
-        return $this->nextDocumentNo($merchantId, 'OBT', OnlineBankTransfer::class, 'transfer_no');
+        return $this->nextDocumentNo($merchantId, 'OBT', OnlineBankTransfer::class, 'transfer_no', $date);
     }
 
     public function postCashVoucher(CashVoucher $voucher): CashVoucher
@@ -550,7 +551,7 @@ class FinanceLedger
 
             $jv = JournalVoucher::query()->create([
                 'merchant_id' => $voucher->merchant_id,
-                'voucher_no' => $this->nextVoucherNo($voucher->merchant_id),
+                'voucher_no' => $this->nextVoucherNo($voucher->merchant_id, $voucher->voucher_date),
                 'voucher_date' => $voucher->voucher_date,
                 'narration' => $voucher->direction->label().' '.$voucher->voucher_no,
                 'status' => FinanceDocumentStatus::Draft,
@@ -592,7 +593,7 @@ class FinanceLedger
 
             $jv = JournalVoucher::query()->create([
                 'merchant_id' => $transfer->merchant_id,
-                'voucher_no' => $this->nextVoucherNo($transfer->merchant_id),
+                'voucher_no' => $this->nextVoucherNo($transfer->merchant_id, $transfer->transfer_date),
                 'voucher_date' => $transfer->transfer_date,
                 'narration' => 'Online transfer '.$transfer->transfer_no.(filled($transfer->reference_no) ? ' ref '.$transfer->reference_no : ''),
                 'status' => FinanceDocumentStatus::Draft,
@@ -724,7 +725,7 @@ class FinanceLedger
         return DB::transaction(function () use ($deposit): BankDeposit {
             $voucher = JournalVoucher::query()->create([
                 'merchant_id' => $deposit->merchant_id,
-                'voucher_no' => $this->nextVoucherNo($deposit->merchant_id),
+                'voucher_no' => $this->nextVoucherNo($deposit->merchant_id, $deposit->deposit_date),
                 'voucher_date' => $deposit->deposit_date,
                 'narration' => ($deposit->bankAccount?->name ?? 'Bank').' deposit '.$deposit->deposit_no.(filled($deposit->reference_no) ? ' slip '.$deposit->reference_no : ''),
                 'status' => FinanceDocumentStatus::Draft,
@@ -861,7 +862,7 @@ class FinanceLedger
 
             $voucher = JournalVoucher::query()->create([
                 'merchant_id' => $cheque->merchant_id,
-                'voucher_no' => $this->nextVoucherNo($cheque->merchant_id),
+                'voucher_no' => $this->nextVoucherNo($cheque->merchant_id, $cheque->cheque_date),
                 'voucher_date' => $cheque->cheque_date,
                 'narration' => $bankName.' '.$cheque->direction->label().' '.$chequeLabel,
                 'status' => FinanceDocumentStatus::Draft,
@@ -902,7 +903,7 @@ class FinanceLedger
                 if ($original) {
                     $reversal = JournalVoucher::query()->create([
                         'merchant_id' => $cheque->merchant_id,
-                        'voucher_no' => $this->nextVoucherNo($cheque->merchant_id),
+                        'voucher_no' => $this->nextVoucherNo($cheque->merchant_id, now()),
                         'voucher_date' => now()->toDateString(),
                         'narration' => 'Reversal: bounced cheque '.$cheque->cheque_number,
                         'status' => FinanceDocumentStatus::Draft,
@@ -949,10 +950,12 @@ class FinanceLedger
         return $cheque->fresh() ?? $cheque;
     }
 
-    private function nextDocumentNo(string $merchantId, string $prefix, string $model, string $column): string
+    private function nextDocumentNo(string $merchantId, string $prefix, string $model, string $column, mixed $date = null): string
     {
-        $date = now()->format('Ymd');
-        $base = "{$prefix}-{$date}-";
+        $datePart = filled($date)
+            ? Carbon::parse($date)->format('Ymd')
+            : now()->format('Ymd');
+        $base = "{$prefix}-{$datePart}-";
 
         $last = $model::query()
             ->withTrashed()

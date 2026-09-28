@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\JournalVouchers\Schemas;
 
 use App\Filament\Resources\Vendors\VendorResource;
+use App\Models\JournalVoucher;
 use App\Models\LedgerAccount;
 use App\Models\Vendor;
 use App\Services\Finance\FinanceLedger;
@@ -41,7 +42,20 @@ class JournalVoucherForm
                         ->label('Date')
                         ->default(now())
                         ->required()
-                        ->displayFormat('d/m/Y'),
+                        ->live()
+                        ->displayFormat('d/m/Y')
+                        ->afterStateUpdated(function (?string $state, Set $set, Get $get, ?JournalVoucher $record): void {
+                            if ($record) {
+                                return;
+                            }
+
+                            $merchantId = (string) ($get('merchant_id') ?: FinanceAccess::merchantId());
+                            if ($merchantId === '' || ! filled($state)) {
+                                return;
+                            }
+
+                            $set('voucher_no', app(FinanceLedger::class)->nextVoucherNo($merchantId, $state));
+                        }),
                     Textarea::make('narration')
                         ->label('Narration')
                         ->rows(2)
