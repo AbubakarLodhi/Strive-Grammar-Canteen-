@@ -18,7 +18,7 @@ class FinanceRepairLedgersCommand extends Command
                             {--merchant= : Limit to one merchant id}
                             {--dry-run : Show actions without writing}';
 
-    protected $description = 'Provision system accounts, re-post purchases/sales to inventory/COGS, and clean orphan sale journal vouchers';
+    protected $description = 'Provision system accounts, re-post purchases/sales/opening stock, and clean orphan/zero sale journal vouchers';
 
     public function handle(FinanceLedger $ledger, OperationalLedgerPoster $poster): int
     {
@@ -41,8 +41,10 @@ class FinanceRepairLedgersCommand extends Command
 
             if (! $dryRun) {
                 $ledger->provisionDefaultAccounts($merchant);
+                $cogs = $ledger->accountByCode($merchant->id, FinanceLedger::COGS_ACCOUNT_CODE);
+                $this->line('  COGS account: '.$cogs->code.' — '.$cogs->name);
             } else {
-                $this->line('  [dry-run] provision default accounts (incl. Inventory 1400 / COGS 5000)');
+                $this->line('  [dry-run] provision default accounts (rename 5000 → Cost of Goods Sold, Inventory 1400)');
             }
 
             $purchases = Purchase::query()
@@ -56,6 +58,16 @@ class FinanceRepairLedgersCommand extends Command
                 foreach ($purchases as $purchase) {
                     $poster->syncPurchase($purchase);
                 }
+            }
+
+            $openingPurchases = Purchase::query()
+                ->where('merchant_id', $merchant->id)
+                ->where('purchase_no', CanteenStockImporter::OPENING_PURCHASE_NO)
+                ->get();
+
+            $this->line('  Opening stock purchases to post (Inventory / Equity): '.$openingPurchases->count());
+            if (! $dryRun) {
+                $ledger->syncOpeningStockLedger($merchant->id);
             }
 
             $sales = Sale::query()
@@ -73,6 +85,9 @@ class FinanceRepairLedgersCommand extends Command
 
             $orphans = $this->repairOrphanSaleVouchers($merchant->id, $poster, $dryRun);
             $this->line('  Orphan/draft sale vouchers handled: '.$orphans);
+
+            $zeros = $this->removeZeroValueSaleVouchers($merchant->id, $poster, $dryRun);
+            $this->line('  Zero-value sale vouchers removed: '.$zeros);
         }
 
         $this->components->success($dryRun ? 'Dry run complete.' : 'Ledger repair complete.');
@@ -131,5 +146,48 @@ class FinanceRepairLedgersCommand extends Command
         }
 
         return $handled;
+    }
+
+    private function removeZeroValueSaleVouchers(string $merchantId, OperationalLedgerPoster $poster, bool $dryRun): int
+    {
+        $saleMorph = (new Sale)->getMorphClass();
+        $removed = 0;
+
+        $vouchers = JournalVoucher::query()
+            ->where('merchant_id', $merchantId)
+            ->where('source_type', $saleMorph)
+            ->whereNotNull('source_id')
+            ->with('lines')
+            ->get();
+
+        foreach ($vouchers as $voucher) {
+            $debit = round((float) $voucher->lines->sum('debit'), 2);
+            $credit = round((float) $voucher->lines->sum('credit'), 2);
+            $sale = Sale::withTrashed()->find($voucher->source_id);
+            $saleTotal = round((float) ($sale?->total_amount ?? 0), 2);
+            $isZeroVoucher = $debit <= 0 && $credit <= 0;
+            $isZeroSale = $sale && ! $sale->trashed() && $saleTotal <= 0;
+
+            if (! $isZeroVoucher && ! $isZeroSale) {
+                continue;
+            }
+
+            $this->warn('  Removing zero-value sale JV '.$voucher->voucher_no.($sale ? ' (sale '.$sale->sale_no.')' : ''));
+
+            if (! $dryRun) {
+                if ($sale) {
+                    $poster->forget($sale);
+                } else {
+                    DB::transaction(function () use ($voucher): void {
+                        $voucher->lines()->delete();
+                        $voucher->forceDelete();
+                    });
+                }
+            }
+
+            $removed++;
+        }
+
+        return $removed;
     }
 }

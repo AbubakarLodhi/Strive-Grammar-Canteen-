@@ -28,7 +28,7 @@ class ListLedgerAccounts extends ListRecords
 
         if ($merchantId) {
             $ledger = app(FinanceLedger::class);
-            $ledger->purgeOpeningStockLedger($merchantId);
+            $ledger->syncOpeningStockLedger($merchantId);
             $ledger->backfillVendorPayableAccounts($merchantId);
         }
     }

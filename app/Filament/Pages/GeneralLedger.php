@@ -9,16 +9,15 @@ use App\Models\LedgerAccount;
 use App\Support\FinanceAccess;
 use BackedEnum;
 use Filament\Actions\Action;
-use Filament\Forms\Components\DatePicker;
 use Filament\Pages\Page;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
-use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
-use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 
 class GeneralLedger extends Page implements HasTable
 {
@@ -84,12 +83,85 @@ class GeneralLedger extends Page implements HasTable
         return LedgerAccount::query()->find($this->selectedAccountId);
     }
 
-    public function table(Table $table): Table
+    /**
+     * @return Collection<int, object>
+     */
+    public function getLedgerRowsProperty(): Collection
     {
-        if ($this->selectedAccountId) {
-            return $this->transactionsTable($table);
+        $account = $this->getSelectedAccount();
+
+        if (! $account) {
+            return collect();
         }
 
+        $from = $this->dateFrom;
+        $to = $this->dateTo;
+        $opening = (float) ($account->opening_balance ?? 0);
+        $debitNormal = $this->isDebitNormal($account->type);
+
+        $prior = JournalVoucherLine::query()
+            ->where('ledger_account_id', $account->id)
+            ->whereHas('journalVoucher', function ($q) use ($from): void {
+                $q->where('status', FinanceDocumentStatus::Posted->value)
+                    ->when(FinanceAccess::merchantId(), fn ($qq, $mid) => $qq->where('merchant_id', $mid))
+                    ->when($from, fn ($qq) => $qq->whereDate('voucher_date', '<', $from));
+            })
+            ->selectRaw('COALESCE(SUM(debit), 0) as debit_total, COALESCE(SUM(credit), 0) as credit_total')
+            ->first();
+
+        $priorDebit = (float) ($prior?->debit_total ?? 0);
+        $priorCredit = (float) ($prior?->credit_total ?? 0);
+        $running = $debitNormal
+            ? $opening + $priorDebit - $priorCredit
+            : $opening + $priorCredit - $priorDebit;
+
+        $rows = collect([
+            (object) [
+                'date' => $from ? Carbon::parse($from) : null,
+                'voucher_no' => '—',
+                'description' => 'Opening balance',
+                'debit' => 0.0,
+                'credit' => 0.0,
+                'balance' => round($running, 2),
+                'is_opening' => true,
+            ],
+        ]);
+
+        $lines = JournalVoucherLine::query()
+            ->where('ledger_account_id', $account->id)
+            ->whereHas('journalVoucher', function ($q) use ($from, $to): void {
+                $q->where('status', FinanceDocumentStatus::Posted->value)
+                    ->when(FinanceAccess::merchantId(), fn ($qq, $mid) => $qq->where('merchant_id', $mid))
+                    ->when($from, fn ($qq) => $qq->whereDate('voucher_date', '>=', $from))
+                    ->when($to, fn ($qq) => $qq->whereDate('voucher_date', '<=', $to));
+            })
+            ->with('journalVoucher')
+            ->get()
+            ->sortBy(fn (JournalVoucherLine $line) => ($line->journalVoucher?->voucher_date?->format('Y-m-d') ?? '').$line->created_at);
+
+        foreach ($lines as $line) {
+            $debit = (float) $line->debit;
+            $credit = (float) $line->credit;
+            $running = $debitNormal
+                ? $running + $debit - $credit
+                : $running + $credit - $debit;
+
+            $rows->push((object) [
+                'date' => $line->journalVoucher?->voucher_date,
+                'voucher_no' => $line->journalVoucher?->voucher_no,
+                'description' => $line->description,
+                'debit' => $debit,
+                'credit' => $credit,
+                'balance' => round($running, 2),
+                'is_opening' => false,
+            ]);
+        }
+
+        return $rows->values();
+    }
+
+    public function table(Table $table): Table
+    {
         return $this->accountsTable($table);
     }
 
@@ -144,53 +216,10 @@ class GeneralLedger extends Page implements HasTable
             ->paginated([25, 50, 100]);
     }
 
-    protected function transactionsTable(Table $table): Table
+    private function isDebitNormal(LedgerAccountType|string|null $type): bool
     {
-        $accountId = $this->selectedAccountId;
-        $from = $this->dateFrom;
-        $to = $this->dateTo;
+        $type = $type instanceof LedgerAccountType ? $type : LedgerAccountType::tryFrom((string) $type);
 
-        return $table
-            ->query(
-                JournalVoucherLine::query()
-                    ->where('ledger_account_id', $accountId)
-                    ->whereHas('journalVoucher', function (Builder $q) use ($from, $to): void {
-                        $q->where('status', FinanceDocumentStatus::Posted->value)
-                            ->when(FinanceAccess::merchantId(), fn ($qq, $mid) => $qq->where('merchant_id', $mid))
-                            ->when($from, fn ($qq) => $qq->whereDate('voucher_date', '>=', $from))
-                            ->when($to, fn ($qq) => $qq->whereDate('voucher_date', '<=', $to));
-                    })
-                    ->with('journalVoucher')
-            )
-            ->columns([
-                TextColumn::make('journalVoucher.voucher_date')
-                    ->label('Date')
-                    ->date('d/m/Y')
-                    ->sortable(),
-                TextColumn::make('journalVoucher.voucher_no')->label('Voucher'),
-                TextColumn::make('description')->limit(40),
-                TextColumn::make('debit')->numeric(2),
-                TextColumn::make('credit')->numeric(2),
-            ])
-            ->defaultSort('created_at', 'desc')
-            ->filters([
-                Filter::make('period')
-                    ->schema([
-                        DatePicker::make('from')->label('From')->native(false),
-                        DatePicker::make('until')->label('To')->native(false),
-                    ])
-                    ->query(function (Builder $query, array $data): Builder {
-                        return $query
-                            ->when($data['from'] ?? null, fn ($q, $date) => $q->whereHas(
-                                'journalVoucher',
-                                fn ($vq) => $vq->whereDate('voucher_date', '>=', $date)
-                            ))
-                            ->when($data['until'] ?? null, fn ($q, $date) => $q->whereHas(
-                                'journalVoucher',
-                                fn ($vq) => $vq->whereDate('voucher_date', '<=', $date)
-                            ));
-                    }),
-            ])
-            ->paginated([25, 50, 100]);
+        return in_array($type, [LedgerAccountType::Asset, LedgerAccountType::Expense], true);
     }
 }

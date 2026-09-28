@@ -41,12 +41,12 @@ class OperationalLedgerPosterTest extends TestCase
         $this->assertPlanBalances($lines);
     }
 
-    public function test_cash_purchase_debits_purchases_and_credits_cash(): void
+    public function test_cash_purchase_debits_inventory_and_credits_cash(): void
     {
         $lines = $this->poster()->purchaseLinePlan(800, 800, 0);
 
         $this->assertSame([
-            ['code' => '5000', 'debit' => 800.0, 'credit' => 0, 'description' => 'Purchases'],
+            ['code' => '1400', 'debit' => 800.0, 'credit' => 0, 'description' => 'Inventory'],
             ['code' => '1000', 'debit' => 0, 'credit' => 800.0, 'description' => 'Amount paid'],
         ], $lines);
 
@@ -58,11 +58,37 @@ class OperationalLedgerPosterTest extends TestCase
         $lines = $this->poster()->purchaseLinePlan(1000, 400, 600, false, 'Paper House', '2001');
 
         $this->assertSame([
-            ['code' => '5000', 'debit' => 1000.0, 'credit' => 0, 'description' => 'Purchases — Paper House'],
+            ['code' => '1400', 'debit' => 1000.0, 'credit' => 0, 'description' => 'Inventory — Paper House'],
             ['code' => '1000', 'debit' => 0, 'credit' => 400.0, 'description' => 'Amount paid — Paper House'],
             ['code' => '2001', 'debit' => 0, 'credit' => 600.0, 'description' => 'Amount payable — Paper House'],
         ], $lines);
 
+        $this->assertPlanBalances($lines);
+    }
+
+    public function test_opening_stock_debits_inventory_and_credits_equity(): void
+    {
+        $lines = $this->poster()->openingStockLinePlan(2500);
+
+        $this->assertSame([
+            ['code' => FinanceLedger::INVENTORY_ACCOUNT_CODE, 'debit' => 2500.0, 'credit' => 0, 'description' => 'Opening inventory'],
+            ['code' => FinanceLedger::EQUITY_ACCOUNT_CODE, 'debit' => 0, 'credit' => 2500.0, 'description' => 'Opening stock equity'],
+        ], $lines);
+
+        $this->assertPlanBalances($lines);
+    }
+
+    public function test_sale_with_cogs_debits_cogs_and_credits_inventory(): void
+    {
+        $lines = $this->poster()->saleLinePlan(1000, 1000, 0, false, 400);
+
+        $cogs = collect($lines)->firstWhere('code', FinanceLedger::COGS_ACCOUNT_CODE);
+        $inventory = collect($lines)->firstWhere('code', FinanceLedger::INVENTORY_ACCOUNT_CODE);
+
+        $this->assertNotNull($cogs);
+        $this->assertSame(400.0, $cogs['debit']);
+        $this->assertNotNull($inventory);
+        $this->assertSame(400.0, $inventory['credit']);
         $this->assertPlanBalances($lines);
     }
 

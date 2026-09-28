@@ -46,6 +46,15 @@ class FinanceLedgerBalanceTest extends TestCase
         $this->assertTrue($bank['is_bank']);
     }
 
+    public function test_default_account_5000_is_cost_of_goods_sold(): void
+    {
+        $cogs = collect(FinanceLedger::DEFAULT_ACCOUNTS)->firstWhere('code', FinanceLedger::COGS_ACCOUNT_CODE);
+
+        $this->assertSame('Cost of Goods Sold', $cogs['name']);
+        $this->assertSame(FinanceLedger::INVENTORY_ACCOUNT_CODE, '1400');
+        $this->assertSame(FinanceLedger::EQUITY_ACCOUNT_CODE, '3000');
+    }
+
     public function test_next_bank_code_skips_ubl(): void
     {
         $ledger = new FinanceLedger;

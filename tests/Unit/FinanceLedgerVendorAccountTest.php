@@ -109,12 +109,40 @@ class FinanceLedgerVendorAccountTest extends TestCase
         $this->assertSoftDeleted($account);
     }
 
+    public function test_provision_renames_legacy_purchases_account_to_cogs(): void
+    {
+        $merchant = $this->createMerchant();
+
+        LedgerAccount::query()->create([
+            'merchant_id' => $merchant->id,
+            'code' => FinanceLedger::COGS_ACCOUNT_CODE,
+            'name' => 'Purchases',
+            'type' => LedgerAccountType::Expense,
+            'is_bank' => false,
+            'is_system' => true,
+            'is_active' => true,
+            'opening_balance' => 0,
+        ]);
+
+        (new FinanceLedger)->provisionDefaultAccounts($merchant);
+
+        $account = LedgerAccount::query()
+            ->where('merchant_id', $merchant->id)
+            ->where('code', FinanceLedger::COGS_ACCOUNT_CODE)
+            ->first();
+
+        $this->assertNotNull($account);
+        $this->assertSame('Cost of Goods Sold', $account->name);
+    }
+
     private function createMerchant(): Merchant
     {
         return Merchant::query()->create([
             'id' => Str::uuid()->toString(),
             'email' => Str::uuid().'@example.com',
             'name' => 'Test Merchant',
+            'address_line_1' => '1 Test Street',
+            'city' => 'Lahore',
             'status' => Merchant::STATUS_VERIFIED,
             'is_active' => true,
             'password' => 'password',

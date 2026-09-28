@@ -73,7 +73,7 @@ class ImportStock extends Page
             return;
         }
 
-        app(FinanceLedger::class)->purgeOpeningStockLedger($merchantId);
+        app(FinanceLedger::class)->syncOpeningStockLedger($merchantId);
 
         $cached = Cache::get($this->cacheKey($merchantId));
         if (is_array($cached)) {
@@ -87,7 +87,7 @@ class ImportStock extends Page
             ->statePath('data')
             ->components([
                 Section::make('Introduce opening stock')
-                    ->description('Upload the stock Excel file (.xls / .xlsx) with columns: Product Name, Qty, Pr Price, Sell Price. Later purchases of the same products increase current stock automatically (opening + purchases − sales). Opening stock is not listed under Purchases or Parties payables.')
+                    ->description('Upload the stock Excel file (.xls / .xlsx) with columns: Product Name, Qty, Pr Price, Sell Price. Later purchases of the same products increase current stock automatically (opening + purchases − sales). Opening stock posts to Inventory (debit) and Owner Equity (credit); it is not listed under Purchases or vendor payables.')
                     ->schema([
                         FileUpload::make('stock_file')
                             ->label('Opening stock Excel file')

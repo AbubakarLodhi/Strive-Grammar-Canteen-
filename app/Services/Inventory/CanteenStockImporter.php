@@ -306,10 +306,10 @@ class CanteenStockImporter
                 'due_amount' => $subtotal,
                 'payment_type' => 'credit',
                 'purchase_date' => now()->toDateString(),
-                'notes' => 'Opening stock. Managed from Opening Stock page; not shown in Purchases or Chart of Accounts.',
+                'notes' => 'Opening stock. Managed from Opening Stock page; not listed under Purchases. Posted to Inventory and Owner Equity.',
             ])->save();
 
-            app(FinanceLedger::class)->purgeOpeningStockLedger($merchant->id);
+            app(FinanceLedger::class)->syncOpeningStockLedger($merchant->id);
         });
 
         return array_merge([

@@ -33,6 +33,19 @@ class FinanceLedger
 
     public const COGS_ACCOUNT_CODE = '5000';
 
+    public const EQUITY_ACCOUNT_CODE = '3000';
+
+    /**
+     * System codes whose name/type must match DEFAULT_ACCOUNTS on every provision.
+     *
+     * @var list<string>
+     */
+    private const FORCE_SYNC_ACCOUNT_CODES = [
+        self::INVENTORY_ACCOUNT_CODE,
+        self::COGS_ACCOUNT_CODE,
+        self::EQUITY_ACCOUNT_CODE,
+    ];
+
     /**
      * @var list<array{code: string, name: string, type: LedgerAccountType, is_bank: bool}>
      */
@@ -191,11 +204,18 @@ class FinanceLedger
                 ]
             );
 
-            if ($account['code'] === self::BANK_ACCOUNT_CODE && $ledgerAccount->is_system) {
+            $shouldForceSync = $ledgerAccount->is_system && (
+                $account['code'] === self::BANK_ACCOUNT_CODE
+                || in_array($account['code'], self::FORCE_SYNC_ACCOUNT_CODES, true)
+            );
+
+            if ($shouldForceSync) {
                 $ledgerAccount->forceFill([
                     'name' => $account['name'],
-                    'is_bank' => true,
+                    'is_bank' => $account['is_bank'],
                     'type' => $account['type'],
+                    'is_system' => true,
+                    'is_active' => true,
                 ])->save();
             }
         }
@@ -334,16 +354,11 @@ class FinanceLedger
     }
 
     /**
-     * Remove opening-stock journal vouchers and any vendor payable ledger account created for them.
+     * Remove any vendor payable ledger account created for the opening-stock vendor.
+     * Opening stock itself posts to Inventory (1400) / Owner Equity (3000).
      */
     public function purgeOpeningStockLedger(string $merchantId): void
     {
-        Purchase::withTrashed()
-            ->where('merchant_id', $merchantId)
-            ->where('purchase_no', CanteenStockImporter::OPENING_PURCHASE_NO)
-            ->get()
-            ->each(fn (Purchase $purchase) => $this->removeForSource($purchase));
-
         $vendorIds = Vendor::withTrashed()
             ->where('merchant_id', $merchantId)
             ->where(function ($query): void {
@@ -366,6 +381,23 @@ class FinanceLedger
                 $account->journalLines()->delete();
                 $account->delete();
             });
+    }
+
+    /**
+     * Clean opening-stock vendor payables and post opening purchase value to Inventory + Equity.
+     */
+    public function syncOpeningStockLedger(string $merchantId): void
+    {
+        $this->purgeOpeningStockLedger($merchantId);
+
+        $poster = app(OperationalLedgerPoster::class);
+
+        Purchase::withTrashed()
+            ->where('merchant_id', $merchantId)
+            ->where('purchase_no', CanteenStockImporter::OPENING_PURCHASE_NO)
+            ->whereNull('deleted_at')
+            ->get()
+            ->each(fn (Purchase $purchase) => $poster->syncPurchase($purchase));
     }
 
     public function syncOpeningCash(Merchant $merchant): void
