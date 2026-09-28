@@ -85,7 +85,7 @@ class ListLedgerAccounts extends ListRecords
             .'<div class="flex items-center justify-between gap-4">'
             .'<div>'
             .'<div class="text-sm font-medium text-gray-500 dark:text-gray-400">Total vendor payables</div>'
-            .'<div class="text-xs text-gray-400 dark:text-gray-500">Sum of all vendor accounts in Chart of Accounts</div>'
+            .'<div class="text-xs text-gray-400 dark:text-gray-500">Sum of all vendor accounts in Parties</div>'
             .'</div>'
             .'<div class="text-lg font-semibold tabular-nums text-gray-950 dark:text-white">'
             .e(number_format($total, 2)).' Cr'

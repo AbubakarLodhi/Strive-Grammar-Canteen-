@@ -10,7 +10,10 @@ use App\Models\Merchant;
 use App\Models\Payment;
 use App\Models\Product;
 use App\Models\ProductVariant;
+use App\Models\Sale;
+use App\Models\User;
 use App\Services\SaleDeletionService;
+use App\Services\SalePostingService;
 use App\Services\Notifications\NotificationDispatcher;
 use App\Services\PaymentLedgerService;
 use App\Services\Finance\OperationalLedgerPoster;
@@ -409,6 +412,44 @@ class EditSale extends EditRecord
                 ->color('gray')
                 ->visible(fn () => $this->viewMode === 'pos')
                 ->action(fn () => $this->switchToStandard()),
+
+            Action::make('push')
+                ->label('Push')
+                ->icon('heroicon-o-paper-airplane')
+                ->color('success')
+                ->requiresConfirmation()
+                ->modalHeading('Push sale')
+                ->modalDescription('This will add the sale to sales totals and cash.')
+                ->visible(fn (): bool => $this->record instanceof Sale
+                    && $this->record->isDraft()
+                    && (
+                        auth($guard)->user()?->hasPermissionTo('sales.create', $guard)
+                        || auth($guard)->user()?->hasPermissionTo('sales.update', $guard)
+                    )
+                )
+                ->action(function (): void {
+                    try {
+                        $user = Filament::auth()->user();
+                        app(SalePostingService::class)->post(
+                            $this->record,
+                            $user instanceof User ? $user : null,
+                        );
+
+                        Notification::make()
+                            ->title('Sale pushed')
+                            ->body('Sale is now included in sales totals, cash, and stock.')
+                            ->success()
+                            ->send();
+
+                        $this->refreshFormData(['status', 'posted_at', 'posted_by']);
+                    } catch (ValidationException $exception) {
+                        Notification::make()
+                            ->title('Cannot push sale')
+                            ->body(collect($exception->errors())->flatten()->first() ?: $exception->getMessage())
+                            ->danger()
+                            ->send();
+                    }
+                }),
 
             ViewAction::make()
                 ->visible(fn () => auth($guard)->user()?->hasPermissionTo('sales.view', $guard)),

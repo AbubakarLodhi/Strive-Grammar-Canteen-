@@ -127,6 +127,12 @@ class OperationalLedgerPoster
 
     public function syncSale(Sale $sale): void
     {
+        if ($sale->isDraft()) {
+            $this->ledger->removeForSource($sale);
+
+            return;
+        }
+
         $sale->loadMissing('payments');
 
         $this->postPlan(

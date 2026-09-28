@@ -68,6 +68,7 @@ class EditCustomer extends EditRecord
 
                     $hasOutstandingCredit = Sale::query()
                         ->withoutTrashed()
+                        ->posted()
                         ->where('customer_id', $record->id)
                         ->where('due_amount', '>', 0)
                         ->exists();

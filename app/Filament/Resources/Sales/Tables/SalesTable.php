@@ -7,7 +7,9 @@ use App\Filament\Resources\Customers\CustomerResource;
 use App\Models\Branch;
 use App\Models\Business;
 use App\Models\Sale;
+use App\Models\User;
 use App\Services\SaleDeletionService;
+use App\Services\SalePostingService;
 use Filament\Actions\Action;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteAction;
@@ -21,12 +23,14 @@ use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
+use Filament\Notifications\Notification;
 use Filament\Schemas\Components\Section;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Validation\ValidationException;
 
 class SalesTable
 {
@@ -43,6 +47,21 @@ class SalesTable
                 TextColumn::make('sale_date')
                     ->label('Date')
                     ->date('d/m/Y')
+                    ->sortable(),
+
+                TextColumn::make('status')
+                    ->label('Status')
+                    ->badge()
+                    ->formatStateUsing(fn (?string $state): string => match ($state) {
+                        Sale::STATUS_DRAFT => 'Draft',
+                        Sale::STATUS_POSTED => 'Posted',
+                        default => (string) $state,
+                    })
+                    ->color(fn (?string $state): string => match ($state) {
+                        Sale::STATUS_DRAFT => 'warning',
+                        Sale::STATUS_POSTED => 'success',
+                        default => 'gray',
+                    })
                     ->sortable(),
 
                 TextColumn::make('customer.name')
@@ -249,6 +268,13 @@ class SalesTable
                     ->searchable()
                     ->preload(),
 
+                SelectFilter::make('status')
+                    ->label('Status')
+                    ->options([
+                        Sale::STATUS_DRAFT => 'Draft',
+                        Sale::STATUS_POSTED => 'Posted',
+                    ]),
+
                 SelectFilter::make('business_id')
                     ->label('Business')
                     ->options(function () {
@@ -382,6 +408,44 @@ class SalesTable
                         ->user()?->hasPermissionTo('sales.view', Filament::getCurrentPanel()->getAuthGuard())
                     ),
 
+                Action::make('push')
+                    ->icon('heroicon-s-paper-airplane')
+                    ->color('success')
+                    ->label('')
+                    ->tooltip('Push to sales & cash')
+                    ->requiresConfirmation()
+                    ->modalHeading('Push sale')
+                    ->modalDescription('This will add the sale to sales totals and cash.')
+                    ->action(function (Sale $record): void {
+                        try {
+                            $user = Filament::auth()->user();
+                            app(SalePostingService::class)->post(
+                                $record,
+                                $user instanceof User ? $user : null,
+                            );
+
+                            Notification::make()
+                                ->title('Sale pushed')
+                                ->body('Sale is now included in sales totals, cash, and stock.')
+                                ->success()
+                                ->send();
+                        } catch (ValidationException $exception) {
+                            Notification::make()
+                                ->title('Cannot push sale')
+                                ->body(collect($exception->errors())->flatten()->first() ?: $exception->getMessage())
+                                ->danger()
+                                ->send();
+                        }
+                    })
+                    ->visible(fn (Sale $record): bool => $record->isDraft()
+                        && (
+                            auth(Filament::getCurrentPanel()->getAuthGuard())
+                                ->user()?->hasPermissionTo('sales.create', Filament::getCurrentPanel()->getAuthGuard())
+                            || auth(Filament::getCurrentPanel()->getAuthGuard())
+                                ->user()?->hasPermissionTo('sales.update', Filament::getCurrentPanel()->getAuthGuard())
+                        )
+                    ),
+
                 Action::make('invoice')
                     ->icon('heroicon-s-document-text')
                     ->color('gray')
@@ -391,8 +455,8 @@ class SalesTable
                         'type' => 'sale',
                         'id' => $record->id,
                     ]))
-                    ->visible(fn () =>
-                        auth(Filament::getCurrentPanel()->getAuthGuard())
+                    ->visible(fn (Sale $record): bool => $record->isPosted()
+                        && auth(Filament::getCurrentPanel()->getAuthGuard())
                             ->user()?->hasPermissionTo('sales.view', Filament::getCurrentPanel()->getAuthGuard())
                     ),
 
@@ -412,7 +476,8 @@ class SalesTable
                             ->send();
                     })
                     ->visible(fn (Sale $record) =>
-                        self::hasReturnableItems($record)
+                        $record->isPosted()
+                        && self::hasReturnableItems($record)
                         && (
                             auth(Filament::getCurrentPanel()->getAuthGuard())
                                 ->user()?->hasPermissionTo('sales.delete', Filament::getCurrentPanel()->getAuthGuard())

@@ -59,6 +59,7 @@ class SalesSummary extends Page implements HasTable
 
                 $query = Sale::query()
                     ->withoutTrashed()
+                    ->posted()
                     ->where('merchant_id', $merchantId)
                     ->with(['items.business', 'items.branch', 'returns.items'])
                     ->withCount('returns')

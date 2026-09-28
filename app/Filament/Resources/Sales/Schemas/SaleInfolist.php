@@ -23,6 +23,20 @@ class SaleInfolist
                         TextEntry::make('sale_no')
                             ->label('Sale Number'),
 
+                        TextEntry::make('status')
+                            ->label('Status')
+                            ->badge()
+                            ->formatStateUsing(fn (?string $state): string => match ($state) {
+                                \App\Models\Sale::STATUS_DRAFT => 'Draft',
+                                \App\Models\Sale::STATUS_POSTED => 'Posted',
+                                default => (string) $state,
+                            })
+                            ->color(fn (?string $state): string => match ($state) {
+                                \App\Models\Sale::STATUS_DRAFT => 'warning',
+                                \App\Models\Sale::STATUS_POSTED => 'success',
+                                default => 'gray',
+                            }),
+
                         TextEntry::make('sale_date')
                             ->label('Sale Date')
                             ->date('d/m/Y'),

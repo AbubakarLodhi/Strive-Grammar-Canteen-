@@ -1132,6 +1132,13 @@
 
                 <div class="pos-actions">
                     <button type="button" class="pos-cancel-btn" wire:click="posClearCart">Clear cart</button>
+                    <button type="button" class="pos-cancel-btn"
+                        wire:click="posSubmitDraft"
+                        wire:loading.attr="disabled"
+                        @disabled(count($this->posCart) === 0 || ! $this->posCustomerId)>
+                        <span wire:loading.remove wire:target="posSubmitDraft">Save as draft</span>
+                        <span wire:loading wire:target="posSubmitDraft">Saving…</span>
+                    </button>
                     <button type="button" class="pos-place-btn"
                         wire:click="posSubmit"
                         wire:loading.attr="disabled"

@@ -158,6 +158,7 @@ class StockReport extends Page implements HasTable
                     JOIN sales s ON s.id = si.sale_id
                     WHERE siv.product_variant_id = product_variants.id
                       AND s.deleted_at IS NULL
+                      AND s.status = 'posted'
                       {$userScope}
                       {$branchScope}
                       {$fromScope}
@@ -247,6 +248,7 @@ class StockReport extends Page implements HasTable
                             JOIN sales s ON s.id = si.sale_id
                             WHERE siv.product_variant_id = product_variants.id
                               AND s.deleted_at IS NULL
+                              AND s.status = 'posted'
                               {$saleUserScope}
                               {$saleBranchScope}
                               {$saleFromScope}
@@ -545,6 +547,7 @@ class StockReport extends Page implements HasTable
                 ->join('sale_items as si', 'si.id', '=', 'sv.sale_item_id')
                 ->join('sales as s', 's.id', '=', 'si.sale_id')
                 ->whereIn('si.branch_id', $staffBranchIds)
+                ->where('s.status', \App\Models\Sale::STATUS_POSTED)
                 ->whereNull('s.deleted_at')
                 ->when(! empty($branchIds), fn ($q) => $q->whereIn('si.branch_id', $branchIds))
                 ->when($fromDate, fn ($q) => $q->whereDate('s.sale_date', '>=', $fromDate))
@@ -597,6 +600,7 @@ class StockReport extends Page implements HasTable
             ->join('sale_items as si', 'si.id', '=', 'siv.sale_item_id')
             ->join('sales as s', 's.id', '=', 'si.sale_id')
             ->whereIn('siv.product_variant_id', $variantIds)
+            ->where('s.status', \App\Models\Sale::STATUS_POSTED)
             ->whereNull('s.deleted_at')
             ->when($user instanceof \App\Models\User, fn ($q) =>
             $q->whereIn('si.branch_id', $staffBranchIds)
@@ -623,6 +627,7 @@ class StockReport extends Page implements HasTable
             ->join('sale_items as si', 'si.id', '=', 'siv.sale_item_id')
             ->join('sales as s', 's.id', '=', 'si.sale_id')
             ->whereIn('siv.product_variant_id', $variantIds)
+            ->where('s.status', \App\Models\Sale::STATUS_POSTED)
             ->whereNull('s.deleted_at')
             ->when($user instanceof \App\Models\User, fn ($q) =>
             $q->whereIn('si.branch_id', $staffBranchIds)

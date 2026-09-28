@@ -28,11 +28,11 @@ class LedgerAccountResource extends Resource
 
     protected static ?int $navigationSort = 1;
 
-    protected static ?string $navigationLabel = 'Chart of Accounts';
+    protected static ?string $navigationLabel = 'Parties';
 
-    protected static ?string $modelLabel = 'Ledger Account';
+    protected static ?string $modelLabel = 'Party';
 
-    protected static ?string $pluralModelLabel = 'Chart of Accounts';
+    protected static ?string $pluralModelLabel = 'Parties';
 
     protected static ?string $recordTitleAttribute = 'name';
 

@@ -104,8 +104,10 @@ class SaleResource extends Resource
             return $query->whereRaw('1 = 0');
         }
 
-        // All users (merchant or staff) see all sales for their merchant
-        return $query->where('merchant_id', $merchantId);
+        // Main Sales list shows posted sales only; drafts live under Pending Sales
+        return $query
+            ->posted()
+            ->where('merchant_id', $merchantId);
     }
 
     public static function form(Schema $schema): Schema

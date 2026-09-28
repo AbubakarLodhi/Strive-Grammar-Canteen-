@@ -46,6 +46,7 @@ class ProductStockAvailability
             ->join('sale_items as si', 'si.id', '=', 'siv.sale_item_id')
             ->join('sales as s', 's.id', 'si.sale_id')
             ->where('siv.product_variant_id', $variantId)
+            ->where('s.status', \App\Models\Sale::STATUS_POSTED)
             ->whereNull('s.deleted_at');
 
         if (filled($branchId)) {
@@ -135,6 +136,7 @@ class ProductStockAvailability
             ->join('sales as s', 's.id', '=', 'si.sale_id')
             ->join('product_variants as pv', 'pv.id', '=', 'siv.product_variant_id')
             ->where('pv.product_id', $productId)
+            ->where('s.status', \App\Models\Sale::STATUS_POSTED)
             ->whereNull('s.deleted_at')
             ->when(filled($branchId), fn ($query) => $query->where('si.branch_id', $branchId))
             ->when(filled($excludeSaleId), fn ($query) => $query->where('s.id', '!=', $excludeSaleId))
@@ -143,6 +145,7 @@ class ProductStockAvailability
         $withoutVariants = (float) DB::table('sale_items as si')
             ->join('sales as s', 's.id', '=', 'si.sale_id')
             ->where('si.product_id', $productId)
+            ->where('s.status', \App\Models\Sale::STATUS_POSTED)
             ->whereNull('s.deleted_at')
             ->whereNotExists(fn ($query) => $query->selectRaw('1')
                 ->from('sale_item_variants as siv')

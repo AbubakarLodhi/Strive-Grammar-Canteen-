@@ -127,6 +127,12 @@ class CreditReminderScheduler
     {
         $sale->refresh();
 
+        if ($sale->isDraft()) {
+            $this->deactivateSaleReminders($sale);
+
+            return;
+        }
+
         if (! $this->isEnabledForMerchant($sale->merchant_id) || ! $sale->isCreditWithBalance()) {
             $this->deactivateSaleReminders($sale);
 
@@ -170,6 +176,7 @@ class CreditReminderScheduler
         }
 
         Sale::query()
+            ->posted()
             ->where('merchant_id', $merchantId)
             ->where('payment_type', 'credit')
             ->where('due_amount', '>', 0)

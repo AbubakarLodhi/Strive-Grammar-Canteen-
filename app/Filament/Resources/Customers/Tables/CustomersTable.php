@@ -203,6 +203,7 @@ class CustomersTable
 
                         $baseQuery = Sale::query()
                             ->withoutTrashed()
+                            ->posted()
                             ->where('customer_id', $record->id)
                             ->when($merchantId, fn ($q) =>
                                 $q->where('merchant_id', $merchantId)
@@ -336,6 +337,7 @@ class CustomersTable
 
                         $hasOutstandingCredit = Sale::query()
                             ->withoutTrashed()
+                            ->posted()
                             ->where('customer_id', $record->id)
                             ->where('due_amount', '>', 0)
                             ->exists();
@@ -364,6 +366,7 @@ class CustomersTable
 
                             $hasOutstandingCredit = Sale::query()
                                 ->withoutTrashed()
+                                ->posted()
                                 ->whereIn('customer_id', $customerIds)
                                 ->where('due_amount', '>', 0)
                                 ->exists();
@@ -395,6 +398,7 @@ class CustomersTable
 
         $salesQuery = Sale::query()
             ->withoutTrashed()
+            ->posted()
             ->where('customer_id', $record->id)
             ->where('merchant_id', $record->merchant_id);
 

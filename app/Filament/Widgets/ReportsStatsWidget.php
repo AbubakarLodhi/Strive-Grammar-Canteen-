@@ -324,6 +324,7 @@ class ReportsStatsWidget extends Widget
 
         $query = Sale::query()
             ->withoutTrashed()
+            ->posted()
             ->where('merchant_id', $merchantId)
             ->when(
                 $filters['business_id'],

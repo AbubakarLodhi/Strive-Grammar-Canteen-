@@ -37,6 +37,8 @@ class CreateSale extends CreateRecord
     // ─── POS toggle ───────────────────────────────────────────────
     public string $viewMode = 'standard'; // 'standard' | 'pos'
 
+    public bool $saveAsDraft = false;
+
     // POS state
     public array $posCart = [];
 
@@ -457,27 +459,24 @@ class CreateSale extends CreateRecord
     // ─── POS submit ───────────────────────────────────────────────
     public function posSubmit(): void
     {
-        if (! $this->validatePosOrder()) {
-            return;
-        }
+        $this->submitPosSale(asDraft: false);
+    }
 
-        $sale = $this->handleRecordCreation($this->buildPosSaleData());
-        $this->queueSaleCreatedEmail($sale->fresh(['customer', 'merchant']));
-        $this->resetPosAfterSale();
-
-        $this->dispatch('pos-order-placed', saleId: $sale->id, saleNo: $sale->sale_no);
-        $this->dispatch('pos-products-refresh');
+    public function posSubmitDraft(): void
+    {
+        $this->submitPosSale(asDraft: true);
     }
 
     // ─── POS submit and create another ────────────────────────────
     public function posSubmitAndCreateAnother(): void
     {
-        if (! $this->validatePosOrder()) {
+        if (! $this->validatePosOrder(asDraft: false)) {
             return;
         }
 
+        $this->saveAsDraft = false;
         $sale = $this->handleRecordCreation($this->buildPosSaleData());
-        $this->queueSaleCreatedEmail($sale->fresh(['customer', 'merchant']));
+        $this->finalizePostedPosSale($sale);
         $this->resetPosAfterSale(keepView: true);
 
         Notification::make()
@@ -489,7 +488,38 @@ class CreateSale extends CreateRecord
         $this->dispatch('pos-products-refresh');
     }
 
-    private function validatePosOrder(): bool
+    private function submitPosSale(bool $asDraft): void
+    {
+        if (! $this->validatePosOrder(asDraft: $asDraft)) {
+            return;
+        }
+
+        $this->saveAsDraft = $asDraft;
+        $sale = $this->handleRecordCreation($this->buildPosSaleData());
+
+        if ($asDraft) {
+            Notification::make()
+                ->title('Sale saved as draft')
+                ->body('It will not affect sales totals, cash, or stock until you Push it.')
+                ->success()
+                ->send();
+        } else {
+            $this->finalizePostedPosSale($sale);
+        }
+
+        $this->resetPosAfterSale();
+        $this->dispatch('pos-order-placed', saleId: $sale->id, saleNo: $sale->sale_no);
+        $this->dispatch('pos-products-refresh');
+    }
+
+    private function finalizePostedPosSale(Sale $sale): void
+    {
+        $sale = $sale->fresh(['customer', 'merchant', 'payments']) ?? $sale;
+        $this->queueSaleCreatedEmail($sale);
+        app(OperationalLedgerPoster::class)->syncSale($sale);
+    }
+
+    private function validatePosOrder(bool $asDraft = false): bool
     {
         if (empty($this->posCart) || ! $this->posCustomerId) {
             $this->addError('pos', 'Select a customer and add at least one product.');
@@ -501,6 +531,10 @@ class CreateSale extends CreateRecord
             $this->addError('pos', 'Set a payment due date for credit or partial payments.');
 
             return false;
+        }
+
+        if ($asDraft) {
+            return true;
         }
 
         $stockError = ProductStockAvailability::validateSaleItemsStock(array_values($this->posCart));
@@ -600,21 +634,29 @@ class CreateSale extends CreateRecord
     // ─── Redirect ─────────────────────────────────────────────────
     protected function getRedirectUrl(): string
     {
+        if ($this->record instanceof Sale && $this->record->isDraft()) {
+            return \App\Filament\Pages\PendingSales::getUrl();
+        }
+
         return $this->getResource()::getUrl('index');
     }
 
     // ─── handleRecordCreation ─────────────────────────────────────
     protected function handleRecordCreation(array $data): Model
     {
-        $stockError = ProductStockAvailability::validateSaleItemsStock($data['items'] ?? []);
+        $asDraft = $this->saveAsDraft;
 
-        if ($stockError !== null) {
-            throw ValidationException::withMessages([
-                'data.items' => $stockError,
-            ]);
+        if (! $asDraft) {
+            $stockError = ProductStockAvailability::validateSaleItemsStock($data['items'] ?? []);
+
+            if ($stockError !== null) {
+                throw ValidationException::withMessages([
+                    'data.items' => $stockError,
+                ]);
+            }
         }
 
-        return DB::transaction(function () use ($data) {
+        return DB::transaction(function () use ($data, $asDraft) {
 
             $items = $data['items'] ?? [];
             unset($data['items']);
@@ -663,9 +705,19 @@ class CreateSale extends CreateRecord
 
             self::applyPaymentFields($data);
 
+            if ($asDraft) {
+                $data['status'] = Sale::STATUS_DRAFT;
+                $data['posted_at'] = null;
+                $data['posted_by'] = null;
+            } else {
+                $data['status'] = Sale::STATUS_POSTED;
+                $data['posted_at'] = now();
+                $data['posted_by'] = $user instanceof User ? $user->id : null;
+            }
+
             $sale = static::getModel()::create($data);
 
-            if ((float) ($data['paid_amount'] ?? 0) > 0) {
+            if (! $asDraft && (float) ($data['paid_amount'] ?? 0) > 0) {
                 PaymentLedgerService::recordSalePayment(
                     $sale,
                     (float) $data['paid_amount'],
@@ -732,11 +784,12 @@ class CreateSale extends CreateRecord
 
             $sale = $sale->fresh();
             $saleId = $sale->id;
+            $createdAsDraft = $asDraft;
 
-            DB::afterCommit(function () use ($saleId): void {
+            DB::afterCommit(function () use ($saleId, $createdAsDraft): void {
                 $fresh = Sale::query()->find($saleId);
 
-                if (! $fresh) {
+                if (! $fresh || $createdAsDraft) {
                     return;
                 }
 
@@ -749,6 +802,8 @@ class CreateSale extends CreateRecord
                 }
             });
 
+            $this->saveAsDraft = false;
+
             return $sale;
         });
     }
@@ -759,8 +814,53 @@ class CreateSale extends CreateRecord
         if (! $sale) {
             return;
         }
+
+        if ($sale->isDraft()) {
+            return;
+        }
+
         $this->queueSaleCreatedEmail($sale);
         app(OperationalLedgerPoster::class)->syncSale($sale);
+    }
+
+    protected function getCreateFormAction(): Action
+    {
+        return parent::getCreateFormAction()
+            ->action(function (): void {
+                $this->saveAsDraft = false;
+                $this->create();
+            });
+    }
+
+    public function createAnother(): void
+    {
+        $this->saveAsDraft = false;
+
+        parent::createAnother();
+    }
+
+    protected function getFormActions(): array
+    {
+        return [
+            $this->getCreateFormAction(),
+            Action::make('saveAsDraft')
+                ->label('Save as draft')
+                ->color('gray')
+                ->action(function (): void {
+                    $this->saveAsDraft = true;
+                    $this->create();
+                }),
+            $this->getCancelFormAction(),
+        ];
+    }
+
+    protected function getCreatedNotificationTitle(): ?string
+    {
+        if ($this->record instanceof Sale && $this->record->isDraft()) {
+            return 'Sale saved as draft';
+        }
+
+        return parent::getCreatedNotificationTitle();
     }
 
     private function queueSaleCreatedEmail(Sale $sale): void

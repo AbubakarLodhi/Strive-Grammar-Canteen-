@@ -280,6 +280,7 @@ class InventoryMovementReport extends Page implements HasTable, HasForms
 
         $saleRows = \App\Models\Sale::query()
             ->withoutTrashed()
+            ->posted()
             ->with([
                 'createdBy',
                 'items.variants.variant.product',
