@@ -78,4 +78,13 @@ class BankDeposit extends Model implements Auditable
     {
         return $this->status === FinanceDocumentStatus::Posted;
     }
+
+    protected static function booted(): void
+    {
+        static::deleting(function (BankDeposit $deposit): void {
+            if ($deposit->isPosted()) {
+                throw new \RuntimeException('Posted bank deposits cannot be deleted.');
+            }
+        });
+    }
 }

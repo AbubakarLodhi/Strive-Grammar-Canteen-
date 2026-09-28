@@ -219,6 +219,42 @@
             </div>
         </div>
 
+        @if (! empty($statements['comparison']) && count($statements['comparison']) > 1)
+            <article class="fr-card">
+                <div class="gold-bar"></div>
+                <header>
+                    <h3>Multi-period comparison</h3>
+                    <p>Headline P&amp;L and balance sheet totals by year.</p>
+                </header>
+                <table class="fr-table">
+                    <thead>
+                        <tr>
+                            <th>Year</th>
+                            <th class="num">Income</th>
+                            <th class="num">Expenses</th>
+                            <th class="num">Profit</th>
+                            <th class="num">Assets</th>
+                            <th class="num">Liabilities</th>
+                            <th class="num">Equity</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($statements['comparison'] as $row)
+                            <tr>
+                                <td>{{ $row['period_label'] }}</td>
+                                <td class="num">{{ $money($row['income_total']) }}</td>
+                                <td class="num">{{ $money($row['expense_total']) }}</td>
+                                <td class="num">{{ $money($row['profit']) }}</td>
+                                <td class="num">{{ $money($row['asset_total']) }}</td>
+                                <td class="num">{{ $money($row['liability_total']) }}</td>
+                                <td class="num">{{ $money($row['equity_total']) }}</td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </article>
+        @endif
+
         <article class="fr-card">
             <div class="gold-bar"></div>
             <header>

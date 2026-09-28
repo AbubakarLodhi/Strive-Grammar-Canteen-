@@ -43,6 +43,12 @@ return new class extends Migration
             return;
         }
 
+        if ($driver === 'sqlite') {
+            DB::table('products')->where('unit', 'pieces')->update(['unit' => 'pcs']);
+
+            return;
+        }
+
         // MySQL / MariaDB: column is an ENUM, not a CHECK constraint.
         DB::table('products')->where('unit', 'pieces')->update(['unit' => 'pcs']);
 
@@ -95,6 +101,12 @@ return new class extends Migration
                     )
                 )
             ");
+
+            return;
+        }
+
+        if ($driver === 'sqlite') {
+            DB::table('products')->where('unit', 'pcs')->update(['unit' => 'pieces']);
 
             return;
         }

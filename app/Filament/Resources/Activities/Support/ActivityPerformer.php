@@ -9,25 +9,37 @@ class ActivityPerformer
 {
     public static function resolve(object $record): string
     {
-        // Polymorphic user relationship covers both Merchant and User
+        $staffFromPayload = self::resolveStaffFromPayload($record);
+        if ($staffFromPayload) {
+            return $staffFromPayload;
+        }
+
+        if (($record->user_type ?? null) === User::class && $record->user?->name) {
+            return (string) $record->user->name;
+        }
+
+        if ($record->user?->name && ($record->user_type ?? null) !== Merchant::class) {
+            return (string) $record->user->name;
+        }
+
         if ($record->user?->name) {
             return (string) $record->user->name;
         }
 
-        // For staff records where the relationship is missing, try to find via audit payload
-        if (($record->user_type ?? null) === User::class) {
-            $staffId = self::extractStaffIdFromAuditPayload($record);
+        return 'System';
+    }
 
-            if ($staffId) {
-                $staff = User::query()->find($staffId);
+    protected static function resolveStaffFromPayload(object $record): ?string
+    {
+        $staffId = self::extractStaffIdFromAuditPayload($record);
 
-                if ($staff?->name) {
-                    return (string) $staff->name;
-                }
-            }
+        if (! $staffId) {
+            return null;
         }
 
-        return 'System';
+        $staff = User::query()->find($staffId);
+
+        return $staff?->name ? (string) $staff->name : null;
     }
 
     protected static function extractStaffIdFromAuditPayload(object $record): ?string

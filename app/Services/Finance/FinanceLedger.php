@@ -2,12 +2,19 @@
 
 namespace App\Services\Finance;
 
+use App\Enums\CashVoucherDirection;
+use App\Enums\ChequeStatus;
 use App\Enums\FinanceDocumentStatus;
 use App\Enums\LedgerAccountType;
+use App\Models\BankCheque;
 use App\Models\BankDeposit;
+use App\Models\BankReconciliation;
+use App\Models\CashVoucher;
+use App\Models\ChequeBook;
 use App\Models\JournalVoucher;
 use App\Models\LedgerAccount;
 use App\Models\Merchant;
+use App\Models\OnlineBankTransfer;
 use App\Models\Purchase;
 use App\Models\Vendor;
 use App\Services\Inventory\CanteenStockImporter;
@@ -21,6 +28,10 @@ class FinanceLedger
 
     public const BANK_ACCOUNT_CODE = '1010';
 
+    public const INVENTORY_ACCOUNT_CODE = '1400';
+
+    public const COGS_ACCOUNT_CODE = '5000';
+
     /**
      * @var list<array{code: string, name: string, type: LedgerAccountType, is_bank: bool}>
      */
@@ -28,10 +39,11 @@ class FinanceLedger
         ['code' => '1000', 'name' => 'Cash in Hand', 'type' => LedgerAccountType::Asset, 'is_bank' => false],
         ['code' => '1010', 'name' => 'UBL', 'type' => LedgerAccountType::Asset, 'is_bank' => true],
         ['code' => '1100', 'name' => 'Accounts Receivable', 'type' => LedgerAccountType::Asset, 'is_bank' => false],
+        ['code' => '1400', 'name' => 'Inventory', 'type' => LedgerAccountType::Asset, 'is_bank' => false],
         ['code' => '2000', 'name' => 'Accounts Payable', 'type' => LedgerAccountType::Liability, 'is_bank' => false],
         ['code' => '3000', 'name' => 'Owner Equity', 'type' => LedgerAccountType::Equity, 'is_bank' => false],
         ['code' => '4000', 'name' => 'Sales', 'type' => LedgerAccountType::Income, 'is_bank' => false],
-        ['code' => '5000', 'name' => 'Purchases', 'type' => LedgerAccountType::Expense, 'is_bank' => false],
+        ['code' => '5000', 'name' => 'Cost of Goods Sold', 'type' => LedgerAccountType::Expense, 'is_bank' => false],
         ['code' => '5100', 'name' => 'Operating Expenses', 'type' => LedgerAccountType::Expense, 'is_bank' => false],
         ['code' => '5200', 'name' => 'Payroll', 'type' => LedgerAccountType::Expense, 'is_bank' => false],
     ];
@@ -466,6 +478,155 @@ class FinanceLedger
         return $this->nextDocumentNo($merchantId, 'BD', BankDeposit::class, 'deposit_no');
     }
 
+    public function nextCashVoucherNo(string $merchantId, CashVoucherDirection $direction): string
+    {
+        $prefix = $direction === CashVoucherDirection::Receiving ? 'CRV' : 'CPV';
+
+        return $this->nextDocumentNo($merchantId, $prefix, CashVoucher::class, 'voucher_no');
+    }
+
+    public function nextOnlineTransferNo(string $merchantId): string
+    {
+        return $this->nextDocumentNo($merchantId, 'OBT', OnlineBankTransfer::class, 'transfer_no');
+    }
+
+    public function postCashVoucher(CashVoucher $voucher): CashVoucher
+    {
+        if ($voucher->isPosted()) {
+            return $voucher->fresh(['journalVoucher', 'cashAccount', 'counterAccount']) ?? $voucher;
+        }
+
+        if ((float) $voucher->amount <= 0) {
+            throw ValidationException::withMessages([
+                'amount' => 'Amount must be greater than zero.',
+            ]);
+        }
+
+        if ($voucher->cash_account_id === $voucher->counter_account_id) {
+            throw ValidationException::withMessages([
+                'counter_account_id' => 'Cash/bank and counter account must be different.',
+            ]);
+        }
+
+        $voucher->loadMissing(['cashAccount', 'counterAccount']);
+
+        return DB::transaction(function () use ($voucher): CashVoucher {
+            $amount = round((float) $voucher->amount, 2);
+            $isReceiving = $voucher->direction === CashVoucherDirection::Receiving;
+
+            $lines = $isReceiving
+                ? [
+                    [
+                        'ledger_account_id' => $voucher->cash_account_id,
+                        'description' => 'Cash received',
+                        'debit' => $amount,
+                        'credit' => 0,
+                        'sort_order' => 1,
+                    ],
+                    [
+                        'ledger_account_id' => $voucher->counter_account_id,
+                        'description' => 'Received from',
+                        'debit' => 0,
+                        'credit' => $amount,
+                        'sort_order' => 2,
+                    ],
+                ]
+                : [
+                    [
+                        'ledger_account_id' => $voucher->counter_account_id,
+                        'description' => 'Paid to',
+                        'debit' => $amount,
+                        'credit' => 0,
+                        'sort_order' => 1,
+                    ],
+                    [
+                        'ledger_account_id' => $voucher->cash_account_id,
+                        'description' => 'Cash paid',
+                        'debit' => 0,
+                        'credit' => $amount,
+                        'sort_order' => 2,
+                    ],
+                ];
+
+            $jv = JournalVoucher::query()->create([
+                'merchant_id' => $voucher->merchant_id,
+                'voucher_no' => $this->nextVoucherNo($voucher->merchant_id),
+                'voucher_date' => $voucher->voucher_date,
+                'narration' => $voucher->direction->label().' '.$voucher->voucher_no,
+                'status' => FinanceDocumentStatus::Draft,
+                'created_by' => $voucher->created_by,
+            ]);
+
+            $jv->lines()->createMany($lines);
+            $this->postVoucher($jv->fresh(['lines']));
+
+            $voucher->forceFill([
+                'status' => FinanceDocumentStatus::Posted,
+                'journal_voucher_id' => $jv->id,
+            ])->save();
+
+            return $voucher->fresh(['journalVoucher', 'cashAccount', 'counterAccount']) ?? $voucher;
+        });
+    }
+
+    public function postOnlineBankTransfer(OnlineBankTransfer $transfer): OnlineBankTransfer
+    {
+        if ($transfer->isPosted()) {
+            return $transfer->fresh(['journalVoucher', 'fromAccount', 'toAccount']) ?? $transfer;
+        }
+
+        if ((float) $transfer->amount <= 0) {
+            throw ValidationException::withMessages([
+                'amount' => 'Amount must be greater than zero.',
+            ]);
+        }
+
+        if ($transfer->from_account_id === $transfer->to_account_id) {
+            throw ValidationException::withMessages([
+                'to_account_id' => 'From and to accounts must be different.',
+            ]);
+        }
+
+        return DB::transaction(function () use ($transfer): OnlineBankTransfer {
+            $amount = round((float) $transfer->amount, 2);
+
+            $jv = JournalVoucher::query()->create([
+                'merchant_id' => $transfer->merchant_id,
+                'voucher_no' => $this->nextVoucherNo($transfer->merchant_id),
+                'voucher_date' => $transfer->transfer_date,
+                'narration' => 'Online transfer '.$transfer->transfer_no.(filled($transfer->reference_no) ? ' ref '.$transfer->reference_no : ''),
+                'status' => FinanceDocumentStatus::Draft,
+                'created_by' => $transfer->created_by,
+            ]);
+
+            $jv->lines()->createMany([
+                [
+                    'ledger_account_id' => $transfer->to_account_id,
+                    'description' => 'Online transfer in',
+                    'debit' => $amount,
+                    'credit' => 0,
+                    'sort_order' => 1,
+                ],
+                [
+                    'ledger_account_id' => $transfer->from_account_id,
+                    'description' => 'Online transfer out',
+                    'debit' => 0,
+                    'credit' => $amount,
+                    'sort_order' => 2,
+                ],
+            ]);
+
+            $this->postVoucher($jv->fresh(['lines']));
+
+            $transfer->forceFill([
+                'status' => FinanceDocumentStatus::Posted,
+                'journal_voucher_id' => $jv->id,
+            ])->save();
+
+            return $transfer->fresh(['journalVoucher', 'fromAccount', 'toAccount']) ?? $transfer;
+        });
+    }
+
     /**
      * @param  list<array{ledger_account_id?: mixed, debit?: mixed, credit?: mixed}>  $lines
      */
@@ -596,6 +757,196 @@ class FinanceLedger
 
             return $deposit->fresh(['journalVoucher', 'bankAccount', 'sourceAccount']);
         });
+    }
+
+    public function nextReconNo(string $merchantId): string
+    {
+        return $this->nextDocumentNo($merchantId, 'BR', BankReconciliation::class, 'recon_no');
+    }
+
+    public function allocateChequeNumber(ChequeBook $book): string
+    {
+        if (! $book->is_active) {
+            throw ValidationException::withMessages([
+                'cheque_book_id' => 'This cheque book is inactive.',
+            ]);
+        }
+
+        if (! $book->hasAvailableLeaves()) {
+            throw ValidationException::withMessages([
+                'cheque_book_id' => 'This cheque book has no remaining leaves.',
+            ]);
+        }
+
+        $number = (string) $book->next_number;
+        $book->forceFill(['next_number' => $book->next_number + 1])->save();
+
+        return $number;
+    }
+
+    public function clearBankCheque(BankCheque $cheque): BankCheque
+    {
+        if ($cheque->isCleared()) {
+            return $cheque->fresh(['journalVoucher', 'bankAccount', 'counterAccount']) ?? $cheque;
+        }
+
+        if (! $cheque->isPending()) {
+            throw ValidationException::withMessages([
+                'status' => 'Only pending cheques can be cleared.',
+            ]);
+        }
+
+        if ((float) $cheque->amount <= 0) {
+            throw ValidationException::withMessages([
+                'amount' => 'Cheque amount must be greater than zero.',
+            ]);
+        }
+
+        $cheque->loadMissing(['bankAccount', 'counterAccount']);
+
+        if (! $cheque->bankAccount?->is_bank) {
+            throw ValidationException::withMessages([
+                'bank_account_id' => 'Cheques must clear against a bank ledger account.',
+            ]);
+        }
+
+        if ($cheque->bank_account_id === $cheque->counter_account_id) {
+            throw ValidationException::withMessages([
+                'counter_account_id' => 'Bank and counter account must be different.',
+            ]);
+        }
+
+        return DB::transaction(function () use ($cheque): BankCheque {
+            $amount = round((float) $cheque->amount, 2);
+            $bankId = $cheque->bank_account_id;
+            $counterId = $cheque->counter_account_id;
+            $bankName = $cheque->bankAccount?->name ?? 'Bank';
+            $chequeLabel = 'Cheque '.$cheque->cheque_number;
+
+            if ($cheque->isOutgoing()) {
+                $lines = [
+                    [
+                        'ledger_account_id' => $counterId,
+                        'description' => $chequeLabel.' to '.($cheque->payee_name ?: 'payee'),
+                        'debit' => $amount,
+                        'credit' => 0,
+                        'sort_order' => 1,
+                    ],
+                    [
+                        'ledger_account_id' => $bankId,
+                        'description' => $chequeLabel.' cleared',
+                        'debit' => 0,
+                        'credit' => $amount,
+                        'sort_order' => 2,
+                    ],
+                ];
+            } else {
+                $lines = [
+                    [
+                        'ledger_account_id' => $bankId,
+                        'description' => $chequeLabel.' cleared',
+                        'debit' => $amount,
+                        'credit' => 0,
+                        'sort_order' => 1,
+                    ],
+                    [
+                        'ledger_account_id' => $counterId,
+                        'description' => $chequeLabel.' from '.($cheque->payer_name ?: 'payer'),
+                        'debit' => 0,
+                        'credit' => $amount,
+                        'sort_order' => 2,
+                    ],
+                ];
+            }
+
+            $voucher = JournalVoucher::query()->create([
+                'merchant_id' => $cheque->merchant_id,
+                'voucher_no' => $this->nextVoucherNo($cheque->merchant_id),
+                'voucher_date' => $cheque->cheque_date,
+                'narration' => $bankName.' '.$cheque->direction->label().' '.$chequeLabel,
+                'status' => FinanceDocumentStatus::Draft,
+                'created_by' => $cheque->created_by,
+            ]);
+
+            $voucher->lines()->createMany($lines);
+            $this->postVoucher($voucher->fresh(['lines']));
+
+            $cheque->forceFill([
+                'status' => ChequeStatus::Cleared,
+                'cleared_at' => now(),
+                'journal_voucher_id' => $voucher->id,
+            ])->save();
+
+            return $cheque->fresh(['journalVoucher', 'bankAccount', 'counterAccount']) ?? $cheque;
+        });
+    }
+
+    public function bounceBankCheque(BankCheque $cheque): BankCheque
+    {
+        if ($cheque->status === ChequeStatus::Bounced) {
+            return $cheque->fresh(['journalVoucher', 'reversalVoucher']) ?? $cheque;
+        }
+
+        if ($cheque->status === ChequeStatus::Cancelled) {
+            throw ValidationException::withMessages([
+                'status' => 'Cancelled cheques cannot be bounced.',
+            ]);
+        }
+
+        return DB::transaction(function () use ($cheque): BankCheque {
+            $reversalId = null;
+
+            if ($cheque->isCleared() && $cheque->journal_voucher_id) {
+                $original = JournalVoucher::query()->with('lines')->find($cheque->journal_voucher_id);
+
+                if ($original) {
+                    $reversal = JournalVoucher::query()->create([
+                        'merchant_id' => $cheque->merchant_id,
+                        'voucher_no' => $this->nextVoucherNo($cheque->merchant_id),
+                        'voucher_date' => now()->toDateString(),
+                        'narration' => 'Reversal: bounced cheque '.$cheque->cheque_number,
+                        'status' => FinanceDocumentStatus::Draft,
+                        'created_by' => $cheque->created_by,
+                    ]);
+
+                    $reversal->lines()->createMany(
+                        $original->lines->map(fn ($line, int $index): array => [
+                            'ledger_account_id' => $line->ledger_account_id,
+                            'description' => 'Reversal: '.($line->description ?: 'cheque '.$cheque->cheque_number),
+                            'debit' => (float) $line->credit,
+                            'credit' => (float) $line->debit,
+                            'sort_order' => $index + 1,
+                        ])->all()
+                    );
+
+                    $this->postVoucher($reversal->fresh(['lines']));
+                    $reversalId = $reversal->id;
+                }
+            }
+
+            $cheque->forceFill([
+                'status' => ChequeStatus::Bounced,
+                'bounced_at' => now(),
+                'reversal_voucher_id' => $reversalId,
+            ])->save();
+
+            return $cheque->fresh(['journalVoucher', 'reversalVoucher', 'bankAccount']) ?? $cheque;
+        });
+    }
+
+    public function cancelBankCheque(BankCheque $cheque): BankCheque
+    {
+        if (! $cheque->isPending()) {
+            throw ValidationException::withMessages([
+                'status' => 'Only pending cheques can be cancelled.',
+            ]);
+        }
+
+        $cheque->forceFill([
+            'status' => ChequeStatus::Cancelled,
+        ])->save();
+
+        return $cheque->fresh() ?? $cheque;
     }
 
     private function nextDocumentNo(string $merchantId, string $prefix, string $model, string $column): string

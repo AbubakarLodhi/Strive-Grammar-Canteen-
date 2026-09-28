@@ -25,6 +25,7 @@ class LedgerAccountsTable
         return $table
             ->modifyQueryUsing(function (Builder $query): void {
                 $query
+                    ->with('parent:id,name')
                     ->withSum([
                         'journalLines as posted_debits' => fn (Builder $lines): Builder => $lines->whereHas(
                             'journalVoucher',
@@ -43,13 +44,25 @@ class LedgerAccountsTable
                     ->label('Account')
                     ->searchable()
                     ->sortable()
-                    ->description(fn (LedgerAccount $record): ?string => $record->isVendorPayable()
-                        ? 'Vendor payable'
-                        : null),
+                    ->description(function (LedgerAccount $record): ?string {
+                        if ($record->isVendorPayable()) {
+                            return 'Vendor payable';
+                        }
+
+                        if ($record->parent?->name) {
+                            return 'Group: '.$record->parent->name;
+                        }
+
+                        return null;
+                    }),
                 TextColumn::make('code')
                     ->label('Code')
                     ->searchable()
                     ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
+                TextColumn::make('parent.name')
+                    ->label('Parent group')
+                    ->placeholder('—')
                     ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('type')
                     ->label('Type')

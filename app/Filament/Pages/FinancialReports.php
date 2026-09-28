@@ -48,6 +48,7 @@ class FinancialReports extends Page
         $this->form->fill([
             'year' => (int) now()->year,
             'month' => null,
+            'compare_years' => [(int) now()->year - 1],
         ]);
     }
 
@@ -58,7 +59,7 @@ class FinancialReports extends Page
             ->components([
                 Section::make('Period')
                     ->description('Leave month empty to show the full year. Choose a month to show that month only.')
-                    ->columns(2)
+                    ->columns(3)
                     ->schema([
                         Select::make('year')
                             ->label('Year')
@@ -73,6 +74,13 @@ class FinancialReports extends Page
                             ->nullable()
                             ->live()
                             ->native(false),
+                        Select::make('compare_years')
+                            ->label('Compare years')
+                            ->helperText('Optional side-by-side year totals under P&L / BS.')
+                            ->options($this->yearOptions())
+                            ->multiple()
+                            ->native(false)
+                            ->live(),
                     ]),
             ]);
     }
@@ -113,10 +121,22 @@ class FinancialReports extends Page
                     'profit_label' => $window['scope'] === 'year' ? 'Profit for the year' : 'Profit for the year to date',
                     'financing_total' => 0.0,
                 ],
+                'comparison' => [],
             ];
         }
 
-        return app(FinancialStatements::class)->forPeriod($merchantId, $year, $month);
+        $statements = app(FinancialStatements::class)->forPeriod($merchantId, $year, $month);
+        $compareYears = collect($this->data['compare_years'] ?? [])
+            ->map(fn ($y) => (int) $y)
+            ->filter(fn (int $y) => $y > 0 && $y !== $year)
+            ->take(2)
+            ->values()
+            ->all();
+
+        $years = array_values(array_unique(array_merge([$year], $compareYears)));
+        $statements['comparison'] = app(FinancialStatements::class)->compareYears($merchantId, $years);
+
+        return $statements;
     }
 
     /**

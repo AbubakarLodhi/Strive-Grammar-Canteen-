@@ -108,9 +108,14 @@ class FinancialStatements
         $equityTotal = round(array_sum(array_column($equity, 'closing')), 2);
         $financingTotal = round($liabilityTotal + $equityTotal + $profitToDate, 2);
 
+        $asAt = $end->copy();
+        if ($asAt->isFuture()) {
+            $asAt = now()->endOfDay();
+        }
+
         return [
             'period_label' => $window['period_label'],
-            'as_at' => $end->format('d/m/Y'),
+            'as_at' => $asAt->format('d/m/Y'),
             'scope' => $window['scope'],
             'amount_label' => $window['amount_label'],
             'trial_balance' => [
@@ -168,6 +173,37 @@ class FinancialStatements
     public function forMonth(string $merchantId, int $year, int $month): array
     {
         return $this->forPeriod($merchantId, $year, $month);
+    }
+
+    /**
+     * Compare P&L / Balance Sheet headline totals across multiple year periods.
+     *
+     * @param  list<int>  $years
+     * @return list<array{year: int, period_label: string, profit: float, income_total: float, expense_total: float, asset_total: float, liability_total: float, equity_total: float}>
+     */
+    public function compareYears(string $merchantId, array $years): array
+    {
+        $rows = [];
+
+        foreach (array_values(array_unique(array_map('intval', $years))) as $year) {
+            if ($year < 2000) {
+                continue;
+            }
+
+            $statement = $this->forPeriod($merchantId, $year, null);
+            $rows[] = [
+                'year' => $year,
+                'period_label' => $statement['period_label'],
+                'profit' => (float) $statement['profit_and_loss']['profit'],
+                'income_total' => (float) $statement['profit_and_loss']['income_total'],
+                'expense_total' => (float) $statement['profit_and_loss']['expense_total'],
+                'asset_total' => (float) $statement['balance_sheet']['asset_total'],
+                'liability_total' => (float) $statement['balance_sheet']['liability_total'],
+                'equity_total' => (float) $statement['balance_sheet']['equity_total'],
+            ];
+        }
+
+        return $rows;
     }
 
     public function closingBalance(LedgerAccountType $type, float $opening, float $debit, float $credit): float

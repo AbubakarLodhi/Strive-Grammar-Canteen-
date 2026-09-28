@@ -26,7 +26,21 @@ return new class extends Migration
                     ->update(['channels' => json_encode([$row->channel])]);
             });
 
-        Schema::table('notification_templates', function (Blueprint $table) {
+        Schema::table('notification_templates', function (Blueprint $table): void {
+            if (Schema::hasColumn('notification_templates', 'channel')) {
+                try {
+                    $table->dropIndex(['channel']);
+                } catch (Throwable) {
+                    // Index may already be gone or named differently.
+                }
+            }
+        });
+
+        if (DB::getDriverName() === 'sqlite') {
+            DB::statement('DROP INDEX IF EXISTS notification_templates_channel_index');
+        }
+
+        Schema::table('notification_templates', function (Blueprint $table): void {
             $table->dropColumn('channel');
         });
     }

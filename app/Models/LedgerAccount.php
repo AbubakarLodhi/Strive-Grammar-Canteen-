@@ -30,6 +30,7 @@ class LedgerAccount extends Model implements Auditable
     /** @var list<string> */
     protected $fillable = [
         'merchant_id',
+        'parent_id',
         'vendor_id',
         'code',
         'name',
@@ -56,6 +57,16 @@ class LedgerAccount extends Model implements Auditable
     public function merchant(): BelongsTo
     {
         return $this->belongsTo(Merchant::class);
+    }
+
+    public function parent(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'parent_id');
+    }
+
+    public function children(): HasMany
+    {
+        return $this->hasMany(self::class, 'parent_id')->orderBy('code');
     }
 
     public function vendor(): BelongsTo

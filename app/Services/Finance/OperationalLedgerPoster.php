@@ -18,22 +18,35 @@ class OperationalLedgerPoster
     /**
      * @return list<array{code: string, debit: float, credit: float, description: string}>
      */
-    public function saleLinePlan(float $total, float $paid, float $due, bool $paidToBank = false): array
-    {
+    public function saleLinePlan(
+        float $total,
+        float $paid,
+        float $due,
+        bool $paidToBank = false,
+        float $cogs = 0,
+    ): array {
         $total = round(max(0, $total), 2);
         $paid = round(max(0, $paid), 2);
         $due = round(max(0, $due), 2);
+        $cogs = round(max(0, $cogs), 2);
 
         if (round($paid + $due, 2) !== $total) {
             $due = round(max(0, $total - $paid), 2);
             $paid = round(max(0, $total - $due), 2);
         }
 
-        return $this->compactLines([
+        $lines = [
             ['code' => $paidToBank ? '1010' : '1000', 'debit' => $paid, 'credit' => 0, 'description' => 'Amount received'],
             ['code' => '1100', 'debit' => $due, 'credit' => 0, 'description' => 'Amount receivable'],
             ['code' => '4000', 'debit' => 0, 'credit' => $total, 'description' => 'Sales'],
-        ]);
+        ];
+
+        if ($cogs > 0) {
+            $lines[] = ['code' => FinanceLedger::COGS_ACCOUNT_CODE, 'debit' => $cogs, 'credit' => 0, 'description' => 'Cost of goods sold'];
+            $lines[] = ['code' => FinanceLedger::INVENTORY_ACCOUNT_CODE, 'debit' => 0, 'credit' => $cogs, 'description' => 'Inventory issued'];
+        }
+
+        return $this->compactLines($lines);
     }
 
     /**
@@ -59,7 +72,7 @@ class OperationalLedgerPoster
         $vendorSuffix = filled($vendorName) ? ' — '.$vendorName : '';
 
         return $this->compactLines([
-            ['code' => '5000', 'debit' => $total, 'credit' => 0, 'description' => 'Purchases'.$vendorSuffix],
+            ['code' => FinanceLedger::INVENTORY_ACCOUNT_CODE, 'debit' => $total, 'credit' => 0, 'description' => 'Inventory'.$vendorSuffix],
             ['code' => $paidFromBank ? '1010' : '1000', 'debit' => 0, 'credit' => $paid, 'description' => 'Amount paid'.$vendorSuffix],
             ['code' => $payableCode, 'debit' => 0, 'credit' => $due, 'description' => 'Amount payable'.$vendorSuffix],
         ]);
@@ -121,7 +134,7 @@ class OperationalLedgerPoster
 
         return $this->compactLines([
             ['code' => $settlementCode, 'debit' => $total, 'credit' => 0, 'description' => 'Return settlement'.$vendorSuffix],
-            ['code' => '5000', 'debit' => 0, 'credit' => $total, 'description' => 'Purchase return'.$vendorSuffix],
+            ['code' => FinanceLedger::INVENTORY_ACCOUNT_CODE, 'debit' => 0, 'credit' => $total, 'description' => 'Inventory return'.$vendorSuffix],
         ]);
     }
 
@@ -133,7 +146,13 @@ class OperationalLedgerPoster
             return;
         }
 
-        $sale->loadMissing('payments');
+        $sale->loadMissing(['payments', 'items.product']);
+
+        $cogs = round($sale->items->sum(function ($item): float {
+            $unitCost = (float) ($item->product?->purchase_price ?? 0);
+
+            return $unitCost * (float) ($item->quantity ?? 0);
+        }), 2);
 
         $this->postPlan(
             $sale,
@@ -145,6 +164,7 @@ class OperationalLedgerPoster
                 (float) $sale->paid_amount,
                 (float) $sale->due_amount,
                 $this->documentUsesBank($sale),
+                $cogs,
             ),
             $sale->created_by,
         );

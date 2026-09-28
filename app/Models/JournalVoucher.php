@@ -75,6 +75,15 @@ class JournalVoucher extends Model implements Auditable
         return $this->hasMany(JournalVoucherLine::class)->orderBy('sort_order');
     }
 
+    protected static function booted(): void
+    {
+        static::deleting(function (JournalVoucher $voucher): void {
+            if ($voucher->isPosted()) {
+                throw new \RuntimeException('Posted journal vouchers cannot be deleted.');
+            }
+        });
+    }
+
     public function isPosted(): bool
     {
         return $this->status === FinanceDocumentStatus::Posted;
