@@ -104,10 +104,8 @@ class SaleResource extends Resource
             return $query->whereRaw('1 = 0');
         }
 
-        // Main Sales list shows posted sales only; drafts live under Pending Sales
-        return $query
-            ->posted()
-            ->where('merchant_id', $merchantId);
+        // Include drafts so View/Edit resolve pending sales; ListSales keeps posted-only.
+        return $query->where('merchant_id', $merchantId);
     }
 
     public static function form(Schema $schema): Schema

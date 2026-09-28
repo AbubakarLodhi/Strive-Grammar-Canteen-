@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Invoice;
 
+use App\Filament\Pages\PendingSales;
 use App\Models\InvoiceDynamicGroup;
 use App\Models\Merchant;
 use App\Models\Purchase;
@@ -10,6 +11,7 @@ use App\Services\InvoiceDynamicFieldResolver;
 use App\Services\InvoiceSlipCounterService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 class InvoiceController
@@ -37,7 +39,7 @@ class InvoiceController
                 'payments',
             ])->find($id),
 
-            default => throw new NotFoundHttpException(),
+            default => throw new NotFoundHttpException,
         };
 
         if (! $record) {
@@ -75,7 +77,7 @@ class InvoiceController
         [$previousInvoiceUrl, $nextInvoiceUrl] = $this->adjacentInvoiceUrls($type, $record);
 
         return view('filament.pages.invoice', [
-            'type'   => $type,
+            'type' => $type,
             'record' => $record,
             'headerGroupOptions' => $headerGroupOptions,
             'footerGroupOptions' => $footerGroupOptions,
@@ -84,7 +86,7 @@ class InvoiceController
             'dynamicGroups' => $dynamicGroups,
             'previousInvoiceUrl' => $previousInvoiceUrl,
             'nextInvoiceUrl' => $nextInvoiceUrl,
-            'closeUrl' => $this->resolveCloseUrl($type),
+            'closeUrl' => $this->resolveCloseUrl($type, $record),
         ]);
     }
 
@@ -114,7 +116,7 @@ class InvoiceController
         $record = match ($type) {
             'sale' => Sale::query()->find($id),
             'purchase' => Purchase::query()->find($id),
-            default => throw new NotFoundHttpException(),
+            default => throw new NotFoundHttpException,
         };
 
         if (! $record) {
@@ -141,8 +143,18 @@ class InvoiceController
         }
     }
 
-    protected function resolveCloseUrl(string $type): string
+    protected function resolveCloseUrl(string $type, Sale|Purchase|null $record = null): string
     {
+        if ($type === 'sale' && $record instanceof Sale && $record->isDraft()) {
+            if (auth('staff')->check()) {
+                return PendingSales::getUrl(panel: 'user');
+            }
+
+            if (auth('merchant')->check()) {
+                return PendingSales::getUrl(panel: 'merchant');
+            }
+        }
+
         $resource = $type === 'sale' ? 'sales' : 'purchases';
 
         if (auth('staff')->check()) {
@@ -153,7 +165,7 @@ class InvoiceController
             return route("filament.merchant.resources.{$resource}.index");
         }
 
-        if (\Illuminate\Support\Facades\Route::has("filament.admin.resources.{$resource}.index")) {
+        if (Route::has("filament.admin.resources.{$resource}.index")) {
             return route("filament.admin.resources.{$resource}.index");
         }
 

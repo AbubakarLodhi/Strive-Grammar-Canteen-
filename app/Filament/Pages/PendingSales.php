@@ -157,6 +157,17 @@ class PendingSales extends Page implements HasTable
                         $this->pushSale($record);
                     }),
 
+                Action::make('invoice')
+                    ->label('Invoice')
+                    ->icon('heroicon-s-document-text')
+                    ->color('gray')
+                    ->url(fn (Sale $record): string => route('invoices.show', [
+                        'type' => 'sale',
+                        'id' => $record->id,
+                    ]))
+                    ->openUrlInNewTab()
+                    ->visible(fn (): bool => (bool) auth($guard)->user()?->hasPermissionTo('sales.view', $guard)),
+
                 ViewAction::make()
                     ->url(fn (Sale $record): string => SaleResource::getUrl('view', ['record' => $record]))
                     ->visible(fn (): bool => (bool) auth($guard)->user()?->hasPermissionTo('sales.view', $guard)),

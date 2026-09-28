@@ -2,14 +2,16 @@
 
 namespace App\Filament\Resources\Sales\Tables;
 
-use App\Filament\Resources\Sales\SaleResource;
 use App\Filament\Resources\Customers\CustomerResource;
+use App\Filament\Resources\Sales\SaleResource;
 use App\Models\Branch;
 use App\Models\Business;
+use App\Models\Merchant;
 use App\Models\Sale;
 use App\Models\User;
 use App\Services\SaleDeletionService;
 use App\Services\SalePostingService;
+use App\Services\SaleReturnService;
 use Filament\Actions\Action;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteAction;
@@ -89,10 +91,10 @@ class SalesTable
                             ->pluck('name');
 
                         $visible = $names->take(2);
-                        $hidden  = $names->count() - $visible->count();
+                        $hidden = $names->count() - $visible->count();
 
                         if ($hidden > 0) {
-                            $visible->push('+' . $hidden);
+                            $visible->push('+'.$hidden);
                         }
 
                         return $visible->toArray();
@@ -112,17 +114,16 @@ class SalesTable
                             ->pluck('name');
 
                         $visible = $names->take(2);
-                        $hidden  = $names->count() - $visible->count();
+                        $hidden = $names->count() - $visible->count();
 
                         if ($hidden > 0) {
-                            $visible->push('+' . $hidden);
+                            $visible->push('+'.$hidden);
                         }
 
                         return $visible->toArray();
                     })
                     ->sortable(false)
                     ->toggleable(),
-
 
                 TextColumn::make('products')
                     ->label('Products')
@@ -139,7 +140,7 @@ class SalesTable
                         $hidden = $names->count() - $visible->count();
 
                         if ($hidden > 0) {
-                            $visible->push('+' . $hidden);
+                            $visible->push('+'.$hidden);
                         }
 
                         return $visible->isNotEmpty() ? $visible->toArray() : ['—'];
@@ -281,9 +282,9 @@ class SalesTable
                         $user = Filament::auth()->user();
 
                         $merchantId = match (true) {
-                            $user instanceof \App\Models\Merchant => $user->id,
-                            $user instanceof \App\Models\User     => $user->merchant_id,
-                            default                               => null,
+                            $user instanceof Merchant => $user->id,
+                            $user instanceof User => $user->merchant_id,
+                            default => null,
                         };
 
                         if (! $merchantId) {
@@ -294,9 +295,8 @@ class SalesTable
                             ->withoutTrashed()
                             ->where('merchant_id', $merchantId);
 
-                        if ($user instanceof \App\Models\User) {
-                            $query->whereHas('users', fn ($q) =>
-                            $q->where('users.id', $user->id)
+                        if ($user instanceof User) {
+                            $query->whereHas('users', fn ($q) => $q->where('users.id', $user->id)
                             );
                         }
 
@@ -310,8 +310,7 @@ class SalesTable
                             return;
                         }
 
-                        $query->whereHas('items', fn ($q) =>
-                        $q->where('sale_items.business_id', $data['value'])
+                        $query->whereHas('items', fn ($q) => $q->where('sale_items.business_id', $data['value'])
                         );
                     }),
 
@@ -323,9 +322,9 @@ class SalesTable
                         $user = Filament::auth()->user();
 
                         $merchantId = match (true) {
-                            $user instanceof \App\Models\Merchant => $user->id,
-                            $user instanceof \App\Models\User     => $user->merchant_id,
-                            default                               => null,
+                            $user instanceof Merchant => $user->id,
+                            $user instanceof User => $user->merchant_id,
+                            default => null,
                         };
 
                         if (! $merchantId) {
@@ -342,9 +341,8 @@ class SalesTable
                             $query->where('business_id', $businessId);
                         }
 
-                        if ($user instanceof \App\Models\User) {
-                            $query->whereHas('users', fn ($q) =>
-                            $q->where('users.id', $user->id)
+                        if ($user instanceof User) {
+                            $query->whereHas('users', fn ($q) => $q->where('users.id', $user->id)
                             );
                         }
 
@@ -358,8 +356,7 @@ class SalesTable
                             return;
                         }
 
-                        $query->whereHas('items', fn ($q) =>
-                        $q->where('sale_items.branch_id', $data['value'])
+                        $query->whereHas('items', fn ($q) => $q->where('sale_items.branch_id', $data['value'])
                         );
                     }),
 
@@ -391,8 +388,7 @@ class SalesTable
                     }),
 
             ])
-            ->recordUrl(fn (Sale $record) =>
-            auth(Filament::getCurrentPanel()->getAuthGuard())
+            ->recordUrl(fn (Sale $record) => auth(Filament::getCurrentPanel()->getAuthGuard())
                 ->user()
                 ?->hasPermissionTo('sales.view', Filament::getCurrentPanel()->getAuthGuard())
                 ? SaleResource::getUrl('view', ['record' => $record])
@@ -403,8 +399,7 @@ class SalesTable
                     ->color('info')
                     ->label('')
                     ->tooltip('View')
-                    ->visible(fn () =>
-                    auth(Filament::getCurrentPanel()->getAuthGuard())
+                    ->visible(fn () => auth(Filament::getCurrentPanel()->getAuthGuard())
                         ->user()?->hasPermissionTo('sales.view', Filament::getCurrentPanel()->getAuthGuard())
                     ),
 
@@ -455,9 +450,9 @@ class SalesTable
                         'type' => 'sale',
                         'id' => $record->id,
                     ]))
-                    ->visible(fn (Sale $record): bool => $record->isPosted()
-                        && auth(Filament::getCurrentPanel()->getAuthGuard())
-                            ->user()?->hasPermissionTo('sales.view', Filament::getCurrentPanel()->getAuthGuard())
+                    ->openUrlInNewTab()
+                    ->visible(fn (Sale $record): bool => auth(Filament::getCurrentPanel()->getAuthGuard())
+                        ->user()?->hasPermissionTo('sales.view', Filament::getCurrentPanel()->getAuthGuard())
                     ),
 
                 Action::make('return_sale')
@@ -469,14 +464,13 @@ class SalesTable
                     ->modalWidth('7xl')
                     ->form(fn (Sale $record) => self::returnForm($record))
                     ->action(function (Sale $record, array $data) {
-                        \App\Services\SaleReturnService::createReturn($record, $data);
-                        \Filament\Notifications\Notification::make()
+                        SaleReturnService::createReturn($record, $data);
+                        Notification::make()
                             ->success()
                             ->title('Sale returned')
                             ->send();
                     })
-                    ->visible(fn (Sale $record) =>
-                        $record->isPosted()
+                    ->visible(fn (Sale $record) => $record->isPosted()
                         && self::hasReturnableItems($record)
                         && (
                             auth(Filament::getCurrentPanel()->getAuthGuard())
@@ -490,8 +484,7 @@ class SalesTable
                     ->color('warning')
                     ->label('')
                     ->tooltip('Edit')
-                    ->visible(fn (Sale $record) =>
-                    auth(Filament::getCurrentPanel()->getAuthGuard())
+                    ->visible(fn (Sale $record) => auth(Filament::getCurrentPanel()->getAuthGuard())
                         ->user()?->hasPermissionTo('sales.update', Filament::getCurrentPanel()->getAuthGuard())
                         && (! $record->returns()->exists() || self::hasReturnableItems($record))
                     ),
@@ -500,8 +493,7 @@ class SalesTable
                     ->color('danger')
                     ->label('')
                     ->tooltip('Delete')
-                    ->visible(fn () =>
-                    auth(Filament::getCurrentPanel()->getAuthGuard())
+                    ->visible(fn () => auth(Filament::getCurrentPanel()->getAuthGuard())
                         ->user()?->hasPermissionTo('sales.delete', Filament::getCurrentPanel()->getAuthGuard())
                     )
                     ->before(function (DeleteAction $action, ?Sale $record): void {
@@ -515,8 +507,7 @@ class SalesTable
             ->toolbarActions([
                 BulkActionGroup::make([
                     DeleteBulkAction::make()
-                        ->visible(fn () =>
-                        auth(Filament::getCurrentPanel()->getAuthGuard())
+                        ->visible(fn () => auth(Filament::getCurrentPanel()->getAuthGuard())
                             ->user()?->hasPermissionTo('sales.delete', Filament::getCurrentPanel()->getAuthGuard())
                         )
                         ->before(function (DeleteBulkAction $action, $records): void {
@@ -530,7 +521,6 @@ class SalesTable
             ])
             ->defaultSort('sale_date', 'desc');
     }
-
 
     public static function returnForm(Sale $sale): array
     {
@@ -552,7 +542,6 @@ class SalesTable
 
                         $variant = $item->variants->first();
                         $variantModel = $variant?->variant;
-
 
                         $variantLabel = $variantModel
                             ? (
@@ -627,32 +616,28 @@ class SalesTable
                         ->label('Subtotal')
                         ->live()
                         ->extraAttributes(['data-summary' => 'subtotal'])
-                        ->content(fn (callable $get) =>
-                        'PKR ' . number_format((float) ($get('subtotal') ?? 0), 2)
+                        ->content(fn (callable $get) => 'PKR '.number_format((float) ($get('subtotal') ?? 0), 2)
                         ),
 
                     Placeholder::make('total_discount_display')
                         ->label('Discount')
                         ->live()
                         ->extraAttributes(['data-summary' => 'discount'])
-                        ->content(fn (callable $get) =>
-                        'PKR ' . number_format((float) ($get('total_discount') ?? 0), 2)
+                        ->content(fn (callable $get) => 'PKR '.number_format((float) ($get('total_discount') ?? 0), 2)
                         ),
 
                     Placeholder::make('total_tax_display')
                         ->label('Tax')
                         ->live()
                         ->extraAttributes(['data-summary' => 'tax'])
-                        ->content(fn (callable $get) =>
-                        'PKR ' . number_format((float) ($get('total_tax') ?? 0), 2)
+                        ->content(fn (callable $get) => 'PKR '.number_format((float) ($get('total_tax') ?? 0), 2)
                         ),
 
                     Placeholder::make('total_amount_display')
                         ->label('Total Amount')
                         ->live()
                         ->extraAttributes(['data-summary' => 'total'])
-                        ->content(fn (callable $get) =>
-                        'PKR ' . number_format((float) ($get('total_amount') ?? 0), 2)
+                        ->content(fn (callable $get) => 'PKR '.number_format((float) ($get('total_amount') ?? 0), 2)
                         ),
 
                     Hidden::make('subtotal')->default($summary['subtotal'])->dehydrated(),
@@ -737,5 +722,4 @@ class SalesTable
 
         return false;
     }
-
 }

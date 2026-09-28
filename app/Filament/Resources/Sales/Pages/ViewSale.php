@@ -11,6 +11,7 @@ use Filament\Actions\EditAction;
 use Filament\Facades\Filament;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ViewRecord;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class ViewSale extends ViewRecord
@@ -21,7 +22,7 @@ class ViewSale extends ViewRecord
     {
         $name = (string) ($this->record?->sale_no ?? $this->record?->name ?? '');
 
-        return 'View '.\Illuminate\Support\Str::limit($name, 30);
+        return 'View '.Str::limit($name, 30);
     }
 
     protected function getHeaderActions(): array
@@ -66,6 +67,16 @@ class ViewSale extends ViewRecord
                             ->send();
                     }
                 }),
+            Action::make('invoice')
+                ->label('Invoice')
+                ->icon('heroicon-o-document-text')
+                ->color('gray')
+                ->url(fn (): string => route('invoices.show', [
+                    'type' => 'sale',
+                    'id' => $this->record->id,
+                ]))
+                ->openUrlInNewTab()
+                ->visible(fn (): bool => (bool) auth($guard)->user()?->hasPermissionTo('sales.view', $guard)),
             EditAction::make()
                 ->visible(fn () => auth($guard)->user()?->hasPermissionTo('sales.update', $guard)),
         ];

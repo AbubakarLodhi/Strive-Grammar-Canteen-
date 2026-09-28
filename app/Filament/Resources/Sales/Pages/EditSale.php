@@ -12,11 +12,11 @@ use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\Sale;
 use App\Models\User;
-use App\Services\SaleDeletionService;
-use App\Services\SalePostingService;
+use App\Services\Finance\OperationalLedgerPoster;
 use App\Services\Notifications\NotificationDispatcher;
 use App\Services\PaymentLedgerService;
-use App\Services\Finance\OperationalLedgerPoster;
+use App\Services\SaleDeletionService;
+use App\Services\SalePostingService;
 use App\Support\ProductStockAvailability;
 use Carbon\Carbon;
 use Filament\Actions\Action;
@@ -25,6 +25,7 @@ use Filament\Actions\ViewAction;
 use Filament\Facades\Filament;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\EditRecord;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
@@ -451,6 +452,17 @@ class EditSale extends EditRecord
                     }
                 }),
 
+            Action::make('invoice')
+                ->label('Invoice')
+                ->icon('heroicon-o-document-text')
+                ->color('gray')
+                ->url(fn (): string => route('invoices.show', [
+                    'type' => 'sale',
+                    'id' => $this->record->id,
+                ]))
+                ->openUrlInNewTab()
+                ->visible(fn (): bool => (bool) auth($guard)->user()?->hasPermissionTo('sales.view', $guard)),
+
             ViewAction::make()
                 ->visible(fn () => auth($guard)->user()?->hasPermissionTo('sales.view', $guard)),
 
@@ -615,7 +627,7 @@ class EditSale extends EditRecord
         return $data;
     }
 
-    protected function handleRecordUpdate(\Illuminate\Database\Eloquent\Model $record, array $data): \Illuminate\Database\Eloquent\Model
+    protected function handleRecordUpdate(Model $record, array $data): Model
     {
         return DB::transaction(function () use ($record, $data) {
             $record->update($data);
@@ -671,7 +683,7 @@ class EditSale extends EditRecord
     /**
      * @param  list<array<string, mixed>>  $items
      */
-    private function syncSaleItems(\Illuminate\Database\Eloquent\Model $sale, array $items): void
+    private function syncSaleItems(Model $sale, array $items): void
     {
         $sale->items()->each(function ($item): void {
             $item->variants()->delete();

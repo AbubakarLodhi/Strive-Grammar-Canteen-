@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Filament\Resources\Sales\SaleResource;
 use App\Models\Branch;
 use App\Models\Business;
 use App\Models\City;
@@ -21,6 +22,7 @@ use App\Models\SaleItemVariant;
 use App\Services\Finance\OperationalLedgerPoster;
 use App\Services\SalePostingService;
 use App\Support\ProductStockAvailability;
+use Filament\Facades\Filament;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -100,6 +102,33 @@ class SaleDraftPostingTest extends TestCase
             ->count());
     }
 
+    public function test_draft_sale_is_resolvable_for_view_and_invoice(): void
+    {
+        [$merchant, $branch, $variant] = $this->seedStockedProduct(quantity: 5);
+
+        $draft = $this->createSaleWithItem(
+            merchant: $merchant,
+            branch: $branch,
+            variant: $variant,
+            quantity: 1,
+            status: Sale::STATUS_DRAFT,
+            paidAmount: 0,
+        );
+
+        $this->actingAs($merchant, 'merchant');
+        Filament::setCurrentPanel(Filament::getPanel('merchant'));
+
+        $resolved = SaleResource::getEloquentQuery()->whereKey($draft->id)->first();
+
+        $this->assertNotNull($resolved);
+        $this->assertTrue($resolved->isDraft());
+
+        $this->get(route('invoices.show', [
+            'type' => 'sale',
+            'id' => $draft->id,
+        ]))->assertOk();
+    }
+
     /**
      * @return array{0: Merchant, 1: Branch, 2: ProductVariant}
      */
@@ -109,6 +138,8 @@ class SaleDraftPostingTest extends TestCase
             'id' => Str::uuid()->toString(),
             'email' => Str::uuid().'@example.com',
             'name' => 'Test Merchant',
+            'address_line_1' => '1 Test Street',
+            'city' => 'Lahore',
             'status' => Merchant::STATUS_VERIFIED,
             'is_active' => true,
             'password' => 'password',
