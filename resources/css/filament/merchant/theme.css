@@ -1613,3 +1613,154 @@ html:not(.dark) body.fi-panel-user .fi-topbar img.fi-logo,
 .fi-demo-banner a:hover {
     color: #fff;
 }
+
+/* --------------------------------------------
+ | Strive Grammar Canteen — refined light workspace
+ |--------------------------------------------- */
+html:not(.dark) body.fi-panel-merchant,
+html:not(.dark) body.fi-panel-user {
+    background: #f3f5f7;
+    color: #172b3a;
+    --flowdesk-purple: #1b4f72;
+    --flowdesk-accent-gradient: linear-gradient(110deg, #1b4f72 0%, #245f82 100%);
+}
+
+html:not(.dark) body.fi-panel-merchant .fi-main-ctn,
+html:not(.dark) body.fi-panel-user .fi-main-ctn {
+    background: #f3f5f7;
+}
+
+html:not(.dark) .fi-topbar {
+    background: rgba(255, 255, 255, 0.96);
+    border-bottom: 1px solid #e4e9ed;
+    box-shadow: 0 2px 8px rgba(20, 43, 59, 0.025);
+}
+
+html:not(.dark) aside.fi-sidebar.fi-main-sidebar {
+    background: #fff;
+    border-right: 1px solid #e5eaee;
+    box-shadow: 3px 0 18px rgba(20, 43, 59, 0.025);
+}
+
+html:not(.dark) .fi-main-sidebar .fi-sidebar-group-label {
+    color: #81909b;
+    font-size: 0.68rem;
+    font-weight: 750;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+html:not(.dark) .fi-main-sidebar .fi-sidebar-item-btn {
+    border-radius: 9px;
+    color: #435767;
+    transition: background-color 160ms ease, color 160ms ease;
+}
+
+html:not(.dark) .fi-main-sidebar .fi-sidebar-item-btn:hover {
+    background: #f1f5f7;
+    color: #173e59;
+}
+
+html:not(.dark) .fi-main-sidebar .fi-sidebar-item.fi-active .fi-sidebar-item-btn,
+html:not(.dark) .fi-main-sidebar .fi-sidebar-item.fi-sidebar-item-has-active-child-items > .fi-sidebar-item-btn {
+    background: #eaf2f6;
+    box-shadow: inset 3px 0 #1b4f72;
+    color: #173e59;
+}
+
+html:not(.dark) .fi-main-sidebar .fi-sidebar-item.fi-active .fi-sidebar-item-icon,
+html:not(.dark) .fi-main-sidebar .fi-sidebar-item.fi-active .fi-sidebar-item-label,
+html:not(.dark) .fi-main-sidebar .fi-sidebar-item.fi-sidebar-item-has-active-child-items > .fi-sidebar-item-btn .fi-sidebar-item-icon,
+html:not(.dark) .fi-main-sidebar .fi-sidebar-item.fi-sidebar-item-has-active-child-items > .fi-sidebar-item-btn .fi-sidebar-item-label {
+    color: #173e59;
+    font-weight: 650;
+}
+
+html:not(.dark) body.fi-panel-merchant .fi-header-heading,
+html:not(.dark) body.fi-panel-user .fi-header-heading {
+    color: #18384f;
+    letter-spacing: -0.025em;
+}
+
+html:not(.dark) body.fi-panel-merchant .fi-header-subheading,
+html:not(.dark) body.fi-panel-user .fi-header-subheading {
+    color: #71818c;
+}
+
+html:not(.dark) body.fi-panel-merchant .fi-main-ctn .fi-section,
+html:not(.dark) body.fi-panel-user .fi-main-ctn .fi-section,
+html:not(.dark) body.fi-panel-merchant .fi-main-ctn .fi-ta-ctn,
+html:not(.dark) body.fi-panel-user .fi-main-ctn .fi-ta-ctn {
+    background: #fff;
+    border: 1px solid #e5eaee;
+    border-radius: 12px;
+    box-shadow: 0 3px 12px rgba(20, 43, 59, 0.035);
+}
+
+html:not(.dark) body.fi-panel-merchant .fi-main-ctn .fi-section-header,
+html:not(.dark) body.fi-panel-user .fi-main-ctn .fi-section-header {
+    border-bottom-color: #edf0f2;
+}
+
+html:not(.dark) .fi-ta-ctn .fi-ta-header-ctn {
+    background: #f7f9fa;
+    border-bottom: 1px solid #e8edf0;
+}
+
+html:not(.dark) .fi-ta-ctn .fi-ta-header-heading,
+html:not(.dark) .fi-ta-ctn .fi-ta-header-description,
+html:not(.dark) .fi-ta-ctn .fi-ta-header-ctn .fi-icon {
+    color: #29475c;
+}
+
+html:not(.dark) .fi-ta-ctn .fi-ta-header-cell {
+    background: #f7f9fa;
+    color: #687b88;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.055em;
+    text-transform: uppercase;
+}
+
+html:not(.dark) .fi-ta-ctn .fi-ta-row:hover {
+    background: #f8fafb;
+}
+
+html:not(.dark) .fi-main-ctn .fi-input-wrp {
+    border-color: #d9e1e6;
+    border-radius: 8px;
+    box-shadow: 0 1px 2px rgba(20, 43, 59, 0.025);
+}
+
+html:not(.dark) .fi-main-ctn .fi-input-wrp:focus-within {
+    border-color: #4b839f;
+    box-shadow: 0 0 0 3px rgba(27, 79, 114, 0.11);
+}
+
+html:not(.dark) .fi-main-ctn .fi-btn-color-primary {
+    box-shadow: 0 2px 5px rgba(27, 79, 114, 0.17);
+}
+
+html:not(.dark) .fi-demo-banner {
+    background: #fff8e9;
+    border-bottom-color: #f0dfb8;
+    color: #614b22;
+}
+
+html:not(.dark) .fi-demo-banner strong,
+html:not(.dark) .fi-demo-banner a {
+    color: #6b4c13;
+}
+
+html:not(.dark) .fi-demo-banner__timer {
+    background: #fff;
+    border-color: #e7d29d;
+    color: #604815;
+}
+
+@media (max-width: 767px) {
+    html:not(.dark) body.fi-panel-merchant .fi-main-ctn .fi-page,
+    html:not(.dark) body.fi-panel-user .fi-main-ctn .fi-page {
+        padding-inline: 1rem;
+    }
+}

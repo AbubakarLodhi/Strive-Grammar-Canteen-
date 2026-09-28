@@ -2,11 +2,11 @@
 
 return [
 
-    'name' => 'Strive Uniform and Bookshop',
+    'name' => 'Strive Grammar Canteen',
 
-    'logo' => 'images/flowdesk-logo.svg',
+    'logo' => 'images/strive-eagle-icon.png',
 
-    'logo_dark' => 'images/flowdesk-logo-dark.svg',
+    'logo_dark' => 'images/strive-eagle-icon.png',
 
     'icon' => 'images/strive-eagle-icon.png',
 

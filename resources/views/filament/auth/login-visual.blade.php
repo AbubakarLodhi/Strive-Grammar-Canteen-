@@ -34,10 +34,10 @@
       <image href="{{ asset('images/strive-eagle.png') }}" x="-110" y="-150" width="220" height="122" preserveAspectRatio="xMidYMid meet"/>
     </g>
 
-    <text y="20" text-anchor="middle" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="42" font-weight="800" letter-spacing="-0.02em" fill="#0f172a">Strive Uniform</text>
-    <text y="62" text-anchor="middle" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="34" font-weight="700" letter-spacing="-0.01em" fill="#1B4F72">and Bookshop</text>
+    <text y="20" text-anchor="middle" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="42" font-weight="800" letter-spacing="-0.02em" fill="#0f172a">Strive Grammar</text>
+    <text y="62" text-anchor="middle" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="34" font-weight="700" letter-spacing="-0.01em" fill="#1B4F72">Canteen</text>
 
     <line x1="-160" y1="84" x2="160" y2="84" stroke="url(#flowdesk-login-line)" stroke-width="1"/>
-    <text y="114" text-anchor="middle" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="14" font-weight="500" letter-spacing="0.08em" fill="#64748b">UNIFORMS · BOOKS · INVENTORY</text>
+    <text y="114" text-anchor="middle" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="14" font-weight="500" letter-spacing="0.08em" fill="#64748b">FRESH FOOD · QUICK SERVICE · DAILY CARE</text>
   </g>
 </svg>
