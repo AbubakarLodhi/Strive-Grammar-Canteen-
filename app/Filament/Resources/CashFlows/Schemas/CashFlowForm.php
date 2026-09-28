@@ -8,13 +8,17 @@ use App\Filament\Resources\Vendors\VendorResource;
 use App\Models\Branch;
 use App\Models\CashFlow;
 use App\Models\Customer;
+use App\Models\LedgerAccount;
+use App\Models\Merchant;
+use App\Models\User;
 use App\Models\Vendor;
+use App\Services\Finance\FinanceLedger;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Select;
-use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\TextInput;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 
@@ -29,14 +33,14 @@ class CashFlowForm
                 ->schema([
                     Hidden::make('merchant_id')
                         ->default(fn () => match (true) {
-                            Filament::auth()->user() instanceof \App\Models\Merchant => Filament::auth()->user()->id,
-                            Filament::auth()->user() instanceof \App\Models\User => Filament::auth()->user()->merchant_id,
+                            Filament::auth()->user() instanceof Merchant => Filament::auth()->user()->id,
+                            Filament::auth()->user() instanceof User => Filament::auth()->user()->merchant_id,
                             default => null,
                         })
                         ->required(),
 
                     Hidden::make('created_by')
-                        ->default(fn () => Filament::auth()->user() instanceof \App\Models\User ? Filament::auth()->id() : null),
+                        ->default(fn () => Filament::auth()->user() instanceof User ? Filament::auth()->id() : null),
 
                     Hidden::make('business_id'),
 
@@ -143,13 +147,26 @@ class CashFlowForm
                         ->displayFormat('d/m/Y')
                         ->columnSpan(1),
 
-                    TextInput::make('method')
+                    Select::make('method')
                         ->label('Method')
+                        ->options(CashFlow::methodLabels())
                         ->default('Cash')
-                        ->disabled()
-                        ->dehydrated()
                         ->required()
-                        ->maxLength(255)
+                        ->live()
+                        ->native(false)
+                        ->afterStateUpdated(function (callable $set): void {
+                            $set('ledger_account_id', null);
+                        })
+                        ->columnSpan(1),
+
+                    Select::make('ledger_account_id')
+                        ->label('Cash / bank account')
+                        ->required()
+                        ->searchable()
+                        ->preload()
+                        ->native(false)
+                        ->options(fn (callable $get): array => self::cashBankAccountOptions($get('method')))
+                        ->helperText('Account used to receive or pay this cash flow.')
                         ->columnSpan(1),
 
                     Textarea::make('notes')
@@ -158,6 +175,42 @@ class CashFlowForm
                         ->rows(4),
                 ]),
         ]);
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public static function cashBankAccountOptions(?string $method): array
+    {
+        $merchantId = match (true) {
+            Filament::auth()->user() instanceof Merchant => Filament::auth()->user()->id,
+            Filament::auth()->user() instanceof User => Filament::auth()->user()->merchant_id,
+            default => null,
+        };
+
+        if (! $merchantId) {
+            return [];
+        }
+
+        $query = LedgerAccount::query()
+            ->where('merchant_id', $merchantId)
+            ->where('is_active', true);
+
+        if ($method === 'Bank') {
+            $query->where('is_bank', true);
+        } else {
+            $query->where('code', FinanceLedger::CASH_ACCOUNT_CODE);
+        }
+
+        return $query
+            ->orderBy('code')
+            ->get()
+            ->mapWithKeys(fn (LedgerAccount $account) => [
+                $account->id => $account->is_bank
+                    ? $account->bankLabel()
+                    : (($account->code ? $account->code.' — ' : '').$account->name),
+            ])
+            ->all();
     }
 
     protected static function partyBranchOptions(?string $partyType, ?string $partyId): array

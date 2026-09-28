@@ -3,9 +3,11 @@
 namespace App\Filament\Resources\CashFlows\Tables;
 
 use App\Filament\Resources\CashFlows\CashFlowResource;
+use App\Filament\Resources\CashFlows\Schemas\CashFlowForm;
 use App\Models\CashFlow;
 use App\Models\Customer;
 use App\Models\Merchant;
+use App\Models\User;
 use App\Models\Vendor;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Filament\Actions\Action;
@@ -15,8 +17,9 @@ use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\DatePicker;
-use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\Filter;
@@ -126,9 +129,9 @@ class CashFlowsTable
                         $payableEntries = $primaryEntries->where('flow_type', 'advance');
                         $receivableEntries = $primaryEntries->where('flow_type', 'loan');
 
-                        $payableTotal    = round((float) $payableEntries->sum('amount'), 2);
-                        $payableSettled  = round((float) $payableEntries->sum(fn (CashFlow $cf) => self::settledAmount($cf)), 2);
-                        $receivableTotal   = round((float) $receivableEntries->sum('amount'), 2);
+                        $payableTotal = round((float) $payableEntries->sum('amount'), 2);
+                        $payableSettled = round((float) $payableEntries->sum(fn (CashFlow $cf) => self::settledAmount($cf)), 2);
+                        $receivableTotal = round((float) $receivableEntries->sum('amount'), 2);
                         $receivableSettled = round((float) $receivableEntries->sum(fn (CashFlow $cf) => self::settledAmount($cf)), 2);
 
                         $pdfContent = Pdf::loadView('exports.cash-flow-party-pdf', [
@@ -137,11 +140,11 @@ class CashFlowsTable
                             'cashFlows' => $cashFlows,
                             'merchantLogoDataUri' => $merchantLogoDataUri,
                             'totals' => [
-                                'payable_total'        => $payableTotal,
-                                'payable_settled'      => $payableSettled,
-                                'payable_remaining'    => max(0, round($payableTotal - $payableSettled, 2)),
-                                'receivable_total'     => $receivableTotal,
-                                'receivable_settled'   => $receivableSettled,
+                                'payable_total' => $payableTotal,
+                                'payable_settled' => $payableSettled,
+                                'payable_remaining' => max(0, round($payableTotal - $payableSettled, 2)),
+                                'receivable_total' => $receivableTotal,
+                                'receivable_settled' => $receivableSettled,
                                 'receivable_remaining' => max(0, round($receivableTotal - $receivableSettled, 2)),
                             ],
                         ])
@@ -149,7 +152,7 @@ class CashFlowsTable
                             ->output();
 
                         return response()->streamDownload(
-                            fn () => print($pdfContent),
+                            fn () => print ($pdfContent),
                             "cash-flow-{$safeName}-{$timestamp}.pdf",
                             ['Content-Type' => 'application/pdf']
                         );
@@ -237,16 +240,20 @@ class CashFlowsTable
                     ->toggleable()
                     ->default('-'),
 
+                TextColumn::make('ledgerAccount.name')
+                    ->label('Cash / bank')
+                    ->placeholder('—')
+                    ->toggleable(),
+
                 TextColumn::make('createdBy.name')
                     ->label('Created By')
                     ->toggleable(isToggledHiddenByDefault: true)
                     ->default('-'),
             ])
             ->filters(static::sharedFilters())
-            ->recordUrl(fn (CashFlow $record) =>
-                auth(Filament::getCurrentPanel()->getAuthGuard())
-                    ->user()
-                    ?->hasPermissionTo('cash_flows.update', Filament::getCurrentPanel()->getAuthGuard())
+            ->recordUrl(fn (CashFlow $record) => auth(Filament::getCurrentPanel()->getAuthGuard())
+                ->user()
+                ?->hasPermissionTo('cash_flows.update', Filament::getCurrentPanel()->getAuthGuard())
                     ? CashFlowResource::getUrl('edit', ['record' => $record])
                     : null
             )
@@ -347,6 +354,20 @@ class CashFlowsTable
                         ->numeric()
                         ->required()
                         ->minValue(0.01),
+                    Select::make('method')
+                        ->label('Method')
+                        ->options(CashFlow::methodLabels())
+                        ->default('Cash')
+                        ->required()
+                        ->live()
+                        ->native(false),
+                    Select::make('ledger_account_id')
+                        ->label('Cash / bank account')
+                        ->required()
+                        ->searchable()
+                        ->preload()
+                        ->native(false)
+                        ->options(fn (callable $get): array => CashFlowForm::cashBankAccountOptions($get('method'))),
                     Textarea::make('notes')
                         ->label('Notes')
                         ->rows(3),
@@ -369,7 +390,7 @@ class CashFlowsTable
                         Notification::make()
                             ->danger()
                             ->title('Invalid settlement amount')
-                            ->body('Amount must be between PKR 0.01 and PKR ' . number_format($remaining, 2) . '.')
+                            ->body('Amount must be between PKR 0.01 and PKR '.number_format($remaining, 2).'.')
                             ->send();
 
                         return;
@@ -384,7 +405,8 @@ class CashFlowsTable
                     );
 
                     $authUser = Filament::auth()->user();
-                    $createdBy = $authUser instanceof \App\Models\User ? (string) $authUser->getKey() : null;
+                    $createdBy = $authUser instanceof User ? (string) $authUser->getKey() : null;
+                    $method = in_array($data['method'] ?? null, ['Cash', 'Bank'], true) ? $data['method'] : 'Cash';
 
                     CashFlow::query()->create([
                         'merchant_id' => $record->merchant_id,
@@ -397,7 +419,8 @@ class CashFlowsTable
                         'direction' => $direction,
                         'amount' => $amount,
                         'flow_date' => $data['flow_date'] ?? now()->toDateString(),
-                        'method' => 'Cash',
+                        'method' => $method,
+                        'ledger_account_id' => $data['ledger_account_id'] ?? null,
                         'reference_no' => $referenceNo,
                         'notes' => $data['notes'] ?? null,
                         'created_by' => $createdBy,
@@ -408,7 +431,7 @@ class CashFlowsTable
                     Notification::make()
                         ->success()
                         ->title('Settlement recorded')
-                        ->body('PKR ' . number_format($amount, 2) . ' settled. Remaining: PKR ' . number_format($newRemaining, 2) . '.')
+                        ->body('PKR '.number_format($amount, 2).' settled. Remaining: PKR '.number_format($newRemaining, 2).'.')
                         ->send();
                 })
                 ->visible(function (CashFlow $record): bool {
@@ -462,7 +485,7 @@ class CashFlowsTable
     {
         static $cache = [];
 
-        $cacheKey = $record->party_type . ':' . $record->party_id;
+        $cacheKey = $record->party_type.':'.$record->party_id;
         if (isset($cache[$cacheKey])) {
             return $cache[$cacheKey];
         }
@@ -486,12 +509,12 @@ class CashFlowsTable
         $receivableSettled = round((float) $receivable->sum(fn (CashFlow $e) => self::settledAmount($e)), 2);
 
         return $cache[$cacheKey] = [
-            'entries_count'       => $entries->count(),
-            'payable_total'       => $payableTotal,
-            'payable_settled'     => $payableSettled,
-            'payable_remaining'   => max(0, round($payableTotal - $payableSettled, 2)),
-            'receivable_total'    => $receivableTotal,
-            'receivable_settled'  => $receivableSettled,
+            'entries_count' => $entries->count(),
+            'payable_total' => $payableTotal,
+            'payable_settled' => $payableSettled,
+            'payable_remaining' => max(0, round($payableTotal - $payableSettled, 2)),
+            'receivable_total' => $receivableTotal,
+            'receivable_settled' => $receivableSettled,
             'receivable_remaining' => max(0, round($receivableTotal - $receivableSettled, 2)),
         ];
     }
@@ -546,7 +569,7 @@ class CashFlowsTable
 
             $mime = mime_content_type($absolutePath) ?: 'image/png';
 
-            return 'data:' . $mime . ';base64,' . base64_encode($contents);
+            return 'data:'.$mime.';base64,'.base64_encode($contents);
         } catch (\Throwable) {
             return null;
         }

@@ -6,10 +6,10 @@
             <thead class="border-b text-left text-gray-500">
                 <tr>
                     <th class="px-4 py-3">Month</th>
-                    <th class="px-4 py-3 text-right">Sales</th>
-                    <th class="px-4 py-3 text-right">Purchases</th>
-                    <th class="px-4 py-3 text-right">Expenses</th>
-                    <th class="px-4 py-3 text-right">Net</th>
+                    <th class="px-4 py-3 text-right">Sales (GL)</th>
+                    <th class="px-4 py-3 text-right">Inventory purchases (GL)</th>
+                    <th class="px-4 py-3 text-right">Expenses (GL)</th>
+                    <th class="px-4 py-3 text-right">Net profit (GL)</th>
                 </tr>
             </thead>
             <tbody>

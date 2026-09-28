@@ -2,9 +2,11 @@
 
 namespace App\Filament\Pages;
 
-use App\Models\Expense;
-use App\Models\Purchase;
-use App\Models\Sale;
+use App\Enums\FinanceDocumentStatus;
+use App\Models\JournalVoucherLine;
+use App\Models\LedgerAccount;
+use App\Services\Finance\FinanceLedger;
+use App\Services\Finance\FinancialStatements;
 use App\Support\FinanceAccess;
 use BackedEnum;
 use Filament\Forms\Components\Select;
@@ -14,6 +16,7 @@ use Filament\Pages\Page;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
+use Illuminate\Support\Carbon;
 
 class MonthlyAnalysis extends Page implements HasForms
 {
@@ -52,6 +55,7 @@ class MonthlyAnalysis extends Page implements HasForms
             ->statePath('data')
             ->components([
                 Section::make('Period')
+                    ->description('Totals come from posted journal vouchers (same basis as Trial Balance / P&L).')
                     ->schema([
                         Select::make('year')
                             ->label('Year')
@@ -77,43 +81,60 @@ class MonthlyAnalysis extends Page implements HasForms
             return [];
         }
 
-        $salesByMonth = Sale::query()
-            ->posted()
-            ->withoutTrashed()
-            ->where('merchant_id', $merchantId)
-            ->whereYear('sale_date', $year)
-            ->get(['sale_date', 'total_amount'])
-            ->groupBy(fn (Sale $sale) => (int) $sale->sale_date?->month)
-            ->map(fn ($group) => round((float) $group->sum('total_amount'), 2));
-
-        $purchasesByMonth = Purchase::query()
-            ->where('merchant_id', $merchantId)
-            ->whereYear('purchase_date', $year)
-            ->get(['purchase_date', 'total_amount'])
-            ->groupBy(fn (Purchase $purchase) => (int) $purchase->purchase_date?->month)
-            ->map(fn ($group) => round((float) $group->sum('total_amount'), 2));
-
-        $expensesByMonth = Expense::query()
-            ->where('merchant_id', $merchantId)
-            ->whereYear('expense_date', $year)
-            ->get(['expense_date', 'total_amount'])
-            ->groupBy(fn (Expense $expense) => (int) $expense->expense_date?->month)
-            ->map(fn ($group) => round((float) $group->sum('total_amount'), 2));
+        $statements = app(FinancialStatements::class);
+        $inventoryPurchases = $this->inventoryPurchaseByMonth($merchantId, $year);
 
         $rows = [];
         for ($m = 1; $m <= 12; $m++) {
-            $s = (float) ($salesByMonth[$m] ?? 0);
-            $p = (float) ($purchasesByMonth[$m] ?? 0);
-            $e = (float) ($expensesByMonth[$m] ?? 0);
+            $period = $statements->forPeriod($merchantId, $year, $m);
+            $sales = (float) $period['profit_and_loss']['income_total'];
+            $expenses = (float) $period['profit_and_loss']['expense_total'];
+            $purchases = (float) ($inventoryPurchases[$m] ?? 0);
             $rows[] = [
                 'month' => date('F', mktime(0, 0, 0, $m, 1)),
-                'sales' => $s,
-                'purchases' => $p,
-                'expenses' => $e,
-                'net' => round($s - $p - $e, 2),
+                'sales' => $sales,
+                'purchases' => $purchases,
+                'expenses' => $expenses,
+                'net' => (float) $period['profit_and_loss']['profit'],
             ];
         }
 
         return $rows;
+    }
+
+    /**
+     * Posted inventory debits (account 1400) by month — GL purchase basis.
+     *
+     * @return array<int, float>
+     */
+    private function inventoryPurchaseByMonth(string $merchantId, int $year): array
+    {
+        $accountIds = LedgerAccount::query()
+            ->where('merchant_id', $merchantId)
+            ->where('code', FinanceLedger::INVENTORY_ACCOUNT_CODE)
+            ->pluck('id');
+
+        if ($accountIds->isEmpty()) {
+            return [];
+        }
+
+        $lines = JournalVoucherLine::query()
+            ->whereIn('ledger_account_id', $accountIds)
+            ->where('debit', '>', 0)
+            ->whereHas('journalVoucher', function ($q) use ($merchantId, $year): void {
+                $q->where('merchant_id', $merchantId)
+                    ->where('status', FinanceDocumentStatus::Posted->value)
+                    ->whereYear('voucher_date', $year);
+            })
+            ->with('journalVoucher:id,voucher_date')
+            ->get();
+
+        $byMonth = [];
+        foreach ($lines as $line) {
+            $month = (int) Carbon::parse($line->journalVoucher?->voucher_date)->month;
+            $byMonth[$month] = round(($byMonth[$month] ?? 0) + (float) $line->debit, 2);
+        }
+
+        return $byMonth;
     }
 }

@@ -2,8 +2,8 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -31,6 +31,7 @@ class CashFlow extends Model
         'amount',
         'flow_date',
         'method',
+        'ledger_account_id',
         'reference_no',
         'notes',
         'created_by',
@@ -76,6 +77,14 @@ class CashFlow extends Model
         });
     }
 
+    public static function methodLabels(): array
+    {
+        return [
+            'Cash' => 'Cash',
+            'Bank' => 'Bank',
+        ];
+    }
+
     public static function flowTypeLabels(): array
     {
         return [
@@ -117,6 +126,11 @@ class CashFlow extends Model
     public function branch(): BelongsTo
     {
         return $this->belongsTo(Branch::class);
+    }
+
+    public function ledgerAccount(): BelongsTo
+    {
+        return $this->belongsTo(LedgerAccount::class, 'ledger_account_id');
     }
 
     public function party(): MorphTo

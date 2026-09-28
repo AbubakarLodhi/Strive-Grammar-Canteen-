@@ -2,14 +2,20 @@
 
 namespace App\Filament\Resources\Expenses\Schemas;
 
+use App\Enums\LedgerAccountType;
+use App\Models\Branch;
+use App\Models\LedgerAccount;
+use App\Models\Merchant;
+use App\Models\User;
+use App\Services\Finance\FinanceLedger;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
-use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\TextInput;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Illuminate\Database\Eloquent\Builder;
@@ -25,7 +31,7 @@ class ExpenseForm
                 ->schema([
                     TextInput::make('expense_no')
                         ->label('Expense Number')
-                        ->default(fn() => 'EXP-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -6)))
+                        ->default(fn () => 'EXP-'.date('Ymd').'-'.strtoupper(substr(uniqid(), -6)))
                         ->required()
                         ->maxLength(255)
                         ->unique(ignoreRecord: true),
@@ -36,58 +42,71 @@ class ExpenseForm
                         ->required()
                         ->displayFormat('d/m/Y'),
 
+                    Select::make('expense_account_id')
+                        ->label('Expense account')
+                        ->required()
+                        ->searchable()
+                        ->preload()
+                        ->native(false)
+                        ->options(fn (): array => self::expenseAccountOptions())
+                        ->helperText('Ledger expense head for this voucher.'),
+
+                    Select::make('paid_from_account_id')
+                        ->label('Paid from')
+                        ->required()
+                        ->searchable()
+                        ->preload()
+                        ->native(false)
+                        ->options(fn (): array => self::paidFromAccountOptions())
+                        ->helperText('Cash or bank account that paid this expense.'),
 
                     Hidden::make('merchant_id')
                         ->default(fn () => match (true) {
-                            Filament::auth()->user() instanceof \App\Models\Merchant
-                            => Filament::auth()->user()->id,
-                            Filament::auth()->user() instanceof \App\Models\User
-                            => Filament::auth()->user()->merchant_id,
+                            Filament::auth()->user() instanceof Merchant => Filament::auth()->user()->id,
+                            Filament::auth()->user() instanceof User => Filament::auth()->user()->merchant_id,
                             default => null,
                         })
                         ->required(),
 
-
-//                    Select::make('business_id')
-//                        ->label('Business')
-//                        ->relationship(
-//                            'business',
-//                            'name',
-//                            function (Builder $query) {
-//                                $user = Filament::auth()->user();
-//                                $query->where('status', true);
-//                                $merchantId = match (true) {
-//                                    $user instanceof \App\Models\Merchant => $user->id,
-//                                    $user instanceof \App\Models\User     => $user->merchant_id,
-//                                    default                               => null,
-//                                };
-//
-//                                if (! $merchantId) {
-//                                    $query->whereRaw('1 = 0');
-//                                    return;
-//                                }
-//
-//                                $query->where('merchant_id', $merchantId);
-//
-//                                // 🔵 Staff → assigned businesses only
-//                                if ($user instanceof \App\Models\User) {
-//                                    $query->whereHas('users', fn ($q) =>
-//                                    $q->where('users.id', $user->id)
-//                                    );
-//                                }
-//                            }
-//                        )
-//                        ->searchable()
-//                        ->preload()
-//                        ->required()
-//                        ->reactive()
-//                        ->live()
-//                        ->afterStateUpdated(function (callable $set,$livewire){
-//                            $set('branch_id', null);
-//                            $livewire->resetValidation('data.business_id');
-//                            $livewire->resetErrorBag('data.business_id');
-//                        }),
-
+                    //                    Select::make('business_id')
+                    //                        ->label('Business')
+                    //                        ->relationship(
+                    //                            'business',
+                    //                            'name',
+                    //                            function (Builder $query) {
+                    //                                $user = Filament::auth()->user();
+                    //                                $query->where('status', true);
+                    //                                $merchantId = match (true) {
+                    //                                    $user instanceof \App\Models\Merchant => $user->id,
+                    //                                    $user instanceof \App\Models\User     => $user->merchant_id,
+                    //                                    default                               => null,
+                    //                                };
+                    //
+                    //                                if (! $merchantId) {
+                    //                                    $query->whereRaw('1 = 0');
+                    //                                    return;
+                    //                                }
+                    //
+                    //                                $query->where('merchant_id', $merchantId);
+                    //
+                    //                                // 🔵 Staff → assigned businesses only
+                    //                                if ($user instanceof \App\Models\User) {
+                    //                                    $query->whereHas('users', fn ($q) =>
+                    //                                    $q->where('users.id', $user->id)
+                    //                                    );
+                    //                                }
+                    //                            }
+                    //                        )
+                    //                        ->searchable()
+                    //                        ->preload()
+                    //                        ->required()
+                    //                        ->reactive()
+                    //                        ->live()
+                    //                        ->afterStateUpdated(function (callable $set,$livewire){
+                    //                            $set('branch_id', null);
+                    //                            $livewire->resetValidation('data.business_id');
+                    //                            $livewire->resetErrorBag('data.business_id');
+                    //                        }),
 
                     Select::make('branch_id')
                         ->label('Branch')
@@ -99,18 +118,18 @@ class ExpenseForm
 
                             $user = Filament::auth()->user();
 
-                            $query = \App\Models\Branch::query()
+                            $query = Branch::query()
                                 ->withoutTrashed()
                                 ->with('business')
                                 ->where('is_active', true);
 
                             // Merchant → all branches
-                            if ($user instanceof \App\Models\Merchant) {
+                            if ($user instanceof Merchant) {
                                 $query->where('merchant_id', $user->id);
                             }
 
                             // Staff → assigned branches only
-                            if ($user instanceof \App\Models\User) {
+                            if ($user instanceof User) {
                                 $query->whereIn(
                                     'branches.id',
                                     $user->branches()->pluck('branches.id')
@@ -122,19 +141,15 @@ class ExpenseForm
                                 ->orderBy('branches.name')
                                 ->get()
                                 ->groupBy(fn ($branch) => $branch->business?->name ?? 'Other')
-                                ->map(fn ($group) =>
-                                $group->pluck('name', 'id')
-                                    ->map(fn ($name) => '&nbsp;&nbsp;&nbsp;&nbsp;' . e($name))
+                                ->map(fn ($group) => $group->pluck('name', 'id')
+                                    ->map(fn ($name) => '&nbsp;&nbsp;&nbsp;&nbsp;'.e($name))
                                     ->toArray()
                                 )
                                 ->toArray();
                         }),
 
-
-
-
                     Hidden::make('created_by')
-                            ->default(fn() => Filament::auth()->id()),
+                        ->default(fn () => Filament::auth()->id()),
                 ]),
 
             Section::make('Expense Items')
@@ -167,18 +182,18 @@ class ExpenseForm
                                     if ($state === null || $state === '' || ! is_numeric($state)) {
                                         $set('line_total', 0);
                                         self::recalcTotals($set, $get);
+
                                         return;
                                     }
                                     // ✅ Clamp quantity to minimum 1
-                                    $qty = max(1, (float)($state ?? 1));
+                                    $qty = max(1, (float) ($state ?? 1));
 
-                                    $unit = (float)($get('unit_price') ?? 0);
+                                    $unit = (float) ($get('unit_price') ?? 0);
 
                                     $set('line_total', $unit * $qty);
 
                                     self::recalcTotals($set, $get);
                                 }),
-
 
                             TextInput::make('unit_price')
                                 ->label('Unit Price')
@@ -192,6 +207,7 @@ class ExpenseForm
                                 ->afterStateUpdated(function ($state, callable $set, callable $get) {
                                     if ($state === null || $state === '') {
                                         self::recalcTotals($set, $get);
+
                                         return;
                                     }
 
@@ -203,13 +219,12 @@ class ExpenseForm
                                     }
 
                                     $unit = max(0, (float) $raw);
-                                    $qty = (float)($get('quantity') ?? 1);
+                                    $qty = (float) ($get('quantity') ?? 1);
 
                                     $set('line_total', $unit * $qty);
 
                                     self::recalcTotals($set, $get);
                                 }),
-
 
                             TextInput::make('line_total')
                                 ->label('Line Total')
@@ -239,7 +254,7 @@ class ExpenseForm
                 ->schema([
                     Placeholder::make('subtotal_display')
                         ->label('Subtotal')
-                        ->content(fn(callable $get): string => number_format((float)($get('subtotal') ?? 0), 2)),
+                        ->content(fn (callable $get): string => number_format((float) ($get('subtotal') ?? 0), 2)),
 
                     TextInput::make('discount')
                         ->label('Discount')
@@ -248,7 +263,7 @@ class ExpenseForm
                         ->minValue(0)
                         ->reactive()
                         ->debounce(300)
-                        ->afterStateUpdated(fn($state, callable $set, callable $get) => self::recalcTotals($set, $get)),
+                        ->afterStateUpdated(fn ($state, callable $set, callable $get) => self::recalcTotals($set, $get)),
 
                     TextInput::make('tax')
                         ->label('Tax')
@@ -257,11 +272,11 @@ class ExpenseForm
                         ->minValue(0)
                         ->reactive()
                         ->debounce(300)
-                        ->afterStateUpdated(fn($state, callable $set, callable $get) => self::recalcTotals($set, $get)),
+                        ->afterStateUpdated(fn ($state, callable $set, callable $get) => self::recalcTotals($set, $get)),
 
                     Placeholder::make('total_amount_display')
                         ->label('Total Amount')
-                        ->content(fn(callable $get): string => number_format((float)($get('total_amount') ?? 0), 2)),
+                        ->content(fn (callable $get): string => number_format((float) ($get('total_amount') ?? 0), 2)),
 
                     Hidden::make('subtotal')->default(0)->dehydrated(),
                     Hidden::make('total_amount')->default(0)->dehydrated(),
@@ -288,10 +303,70 @@ class ExpenseForm
             return max(0, $qty) * max(0, $unit);
         });
 
-        $discount = (float)($get('discount') ?? 0);
-        $tax = (float)($get('tax') ?? 0);
+        $discount = (float) ($get('discount') ?? 0);
+        $tax = (float) ($get('tax') ?? 0);
 
         $set('subtotal', $subtotal);
         $set('total_amount', $subtotal - $discount + $tax);
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private static function expenseAccountOptions(): array
+    {
+        $merchantId = self::merchantId();
+        if (! $merchantId) {
+            return [];
+        }
+
+        return LedgerAccount::query()
+            ->where('merchant_id', $merchantId)
+            ->where('is_active', true)
+            ->where('type', LedgerAccountType::Expense)
+            ->orderBy('code')
+            ->get()
+            ->mapWithKeys(fn ($account) => [
+                $account->id => trim(($account->code ? $account->code.' — ' : '').$account->name),
+            ])
+            ->all();
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private static function paidFromAccountOptions(): array
+    {
+        $merchantId = self::merchantId();
+        if (! $merchantId) {
+            return [];
+        }
+
+        return LedgerAccount::query()
+            ->where('merchant_id', $merchantId)
+            ->where('is_active', true)
+            ->where(function ($q): void {
+                $q->where('code', FinanceLedger::CASH_ACCOUNT_CODE)
+                    ->orWhere('is_bank', true);
+            })
+            ->orderBy('code')
+            ->get()
+            ->mapWithKeys(fn ($account) => [
+                $account->id => $account->is_bank
+                    ? $account->bankLabel()
+                    : trim(($account->code ? $account->code.' — ' : '').$account->name),
+            ])
+            ->all();
+    }
+
+    private static function merchantId(): ?string
+    {
+        $user = Filament::auth()->user();
+
+        return match (true) {
+            $user instanceof Merchant => $user->id,
+            $user instanceof User => $user->merchant_id,
+            default => null,
+        };
     }
 }

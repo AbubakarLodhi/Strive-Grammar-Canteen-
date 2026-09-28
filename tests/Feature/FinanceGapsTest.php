@@ -288,6 +288,77 @@ class FinanceGapsTest extends TestCase
         $this->assertTrue($asAt->lessThanOrEqualTo(now()->endOfDay()));
     }
 
+    public function test_compare_years_equity_includes_period_profit(): void
+    {
+        $merchant = Merchant::query()->create([
+            'id' => Str::uuid()->toString(),
+            'email' => Str::uuid().'@example.com',
+            'name' => 'Compare Merchant',
+            'address_line_1' => '1 Test Street',
+            'city' => 'Lahore',
+            'status' => Merchant::STATUS_VERIFIED,
+            'is_active' => true,
+            'password' => 'password',
+        ]);
+
+        $ledger = app(FinanceLedger::class);
+        $ledger->provisionDefaultAccounts($merchant);
+
+        $cash = LedgerAccount::query()
+            ->where('merchant_id', $merchant->id)
+            ->where('code', '1000')
+            ->firstOrFail();
+        $sales = LedgerAccount::query()
+            ->where('merchant_id', $merchant->id)
+            ->where('code', '4000')
+            ->firstOrFail();
+
+        $jv = JournalVoucher::query()->create([
+            'id' => Str::uuid()->toString(),
+            'merchant_id' => $merchant->id,
+            'voucher_no' => 'JV-CMP',
+            'voucher_date' => now()->toDateString(),
+            'narration' => 'Sale',
+            'status' => FinanceDocumentStatus::Draft,
+        ]);
+        $jv->lines()->createMany([
+            [
+                'ledger_account_id' => $cash->id,
+                'description' => 'Cash',
+                'debit' => 100,
+                'credit' => 0,
+                'sort_order' => 1,
+            ],
+            [
+                'ledger_account_id' => $sales->id,
+                'description' => 'Sales',
+                'debit' => 0,
+                'credit' => 100,
+                'sort_order' => 2,
+            ],
+        ]);
+        $ledger->postVoucher($jv->fresh(['lines']));
+
+        $rows = app(FinancialStatements::class)
+            ->compareYears($merchant->id, [(int) now()->year]);
+
+        $this->assertNotEmpty($rows);
+        $this->assertSame(100.0, $rows[0]['profit']);
+        $this->assertSame(100.0, $rows[0]['equity_total']);
+    }
+
+    public function test_expense_plan_uses_selected_accounts(): void
+    {
+        $plan = app(OperationalLedgerPoster::class)->expenseLinePlan(50, false, '5100', '1010');
+
+        $this->assertTrue(collect($plan)->contains(
+            fn (array $line): bool => $line['code'] === '5100' && (float) $line['debit'] === 50.0
+        ));
+        $this->assertTrue(collect($plan)->contains(
+            fn (array $line): bool => $line['code'] === '1010' && (float) $line['credit'] === 50.0
+        ));
+    }
+
     /**
      * @return array{0: Merchant, 1: LedgerAccount, 2: LedgerAccount, 3?: LedgerAccount}
      */

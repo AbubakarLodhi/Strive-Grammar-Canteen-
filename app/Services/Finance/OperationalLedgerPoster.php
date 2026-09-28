@@ -81,13 +81,19 @@ class OperationalLedgerPoster
     /**
      * @return list<array{code: string, debit: float, credit: float, description: string}>
      */
-    public function expenseLinePlan(float $total, bool $paidFromBank = false): array
-    {
+    public function expenseLinePlan(
+        float $total,
+        bool $paidFromBank = false,
+        ?string $expenseCode = null,
+        ?string $paidFromCode = null,
+    ): array {
         $total = round(max(0, $total), 2);
+        $expenseCode = $expenseCode ?: '5100';
+        $paidFromCode = $paidFromCode ?: ($paidFromBank ? '1010' : '1000');
 
         return $this->compactLines([
-            ['code' => '5100', 'debit' => $total, 'credit' => 0, 'description' => 'Operating expense'],
-            ['code' => $paidFromBank ? '1010' : '1000', 'debit' => 0, 'credit' => $total, 'description' => 'Expense paid'],
+            ['code' => $expenseCode, 'debit' => $total, 'credit' => 0, 'description' => 'Operating expense'],
+            ['code' => $paidFromCode, 'debit' => 0, 'credit' => $total, 'description' => 'Expense paid'],
         ]);
     }
 
@@ -206,12 +212,17 @@ class OperationalLedgerPoster
 
     public function syncExpense(Expense $expense): void
     {
+        $expense->loadMissing(['expenseAccount', 'paidFromAccount']);
+
+        $expenseCode = $expense->expenseAccount?->code ?: '5100';
+        $paidFromCode = $expense->paidFromAccount?->code ?: '1000';
+
         $this->postPlan(
             $expense,
             $expense->merchant_id,
             $expense->expense_date,
             'Expense '.$expense->expense_no,
-            $this->expenseLinePlan((float) $expense->total_amount),
+            $this->expenseLinePlan((float) $expense->total_amount, false, $expenseCode, $paidFromCode),
             $expense->created_by,
         );
     }

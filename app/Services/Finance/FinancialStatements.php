@@ -191,6 +191,10 @@ class FinancialStatements
             }
 
             $statement = $this->forPeriod($merchantId, $year, null);
+            $equityIncludingProfit = round(
+                (float) $statement['balance_sheet']['equity_total'] + (float) $statement['balance_sheet']['period_profit'],
+                2
+            );
             $rows[] = [
                 'year' => $year,
                 'period_label' => $statement['period_label'],
@@ -199,7 +203,7 @@ class FinancialStatements
                 'expense_total' => (float) $statement['profit_and_loss']['expense_total'],
                 'asset_total' => (float) $statement['balance_sheet']['asset_total'],
                 'liability_total' => (float) $statement['balance_sheet']['liability_total'],
-                'equity_total' => (float) $statement['balance_sheet']['equity_total'],
+                'equity_total' => $equityIncludingProfit,
             ];
         }
 

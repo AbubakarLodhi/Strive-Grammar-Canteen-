@@ -10,8 +10,6 @@ use App\Filament\Resources\JournalVouchers\Schemas\JournalVoucherForm;
 use App\Filament\Resources\JournalVouchers\Schemas\JournalVoucherInfolist;
 use App\Filament\Resources\JournalVouchers\Tables\JournalVouchersTable;
 use App\Models\JournalVoucher;
-use App\Models\Sale;
-use App\Models\SaleReturn;
 use App\Support\FinanceAccess;
 use BackedEnum;
 use Filament\Resources\Resource;
@@ -57,17 +55,8 @@ class JournalVoucherResource extends Resource
 
     public static function getEloquentQuery(): Builder
     {
-        // Sale / sale-return vouchers still post for Cash in Hand, but stay out of this list.
-        // Manual and vendor payment vouchers remain visible here.
         return FinanceAccess::scopeMerchant(parent::getEloquentQuery())
-            ->where(function (Builder $query): void {
-                $query->whereNull('source_type')
-                    ->orWhereNotIn('source_type', [
-                        (new Sale)->getMorphClass(),
-                        (new SaleReturn)->getMorphClass(),
-                    ]);
-            })
-            ->with(['lines.ledgerAccount', 'vendor']);
+            ->with(['lines.ledgerAccount', 'vendor', 'source']);
     }
 
     public static function form(Schema $schema): Schema

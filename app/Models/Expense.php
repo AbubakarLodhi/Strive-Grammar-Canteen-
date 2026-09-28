@@ -2,23 +2,24 @@
 
 namespace App\Models;
 
-use OwenIt\Auditing\Contracts\Auditable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use OwenIt\Auditing\Contracts\Auditable;
 
 class Expense extends Model implements Auditable
 {
-    use \OwenIt\Auditing\Auditable;
     use HasUuids;
+    use \OwenIt\Auditing\Auditable;
 
     /** @var bool */
     public $incrementing = false;
 
     /** @var string[] */
     protected $fillable = [
-        'merchant_id', 'business_id', 'branch_id', 'expense_no', 'expense_date', 'subtotal', 'discount',
+        'merchant_id', 'business_id', 'branch_id', 'expense_account_id', 'paid_from_account_id',
+        'expense_no', 'expense_date', 'subtotal', 'discount',
         'tax', 'total_amount', 'notes', 'created_by',
     ];
 
@@ -47,6 +48,16 @@ class Expense extends Model implements Auditable
     public function branch(): BelongsTo
     {
         return $this->belongsTo(Branch::class);
+    }
+
+    public function expenseAccount(): BelongsTo
+    {
+        return $this->belongsTo(LedgerAccount::class, 'expense_account_id');
+    }
+
+    public function paidFromAccount(): BelongsTo
+    {
+        return $this->belongsTo(LedgerAccount::class, 'paid_from_account_id');
     }
 
     public function createdBy(): BelongsTo

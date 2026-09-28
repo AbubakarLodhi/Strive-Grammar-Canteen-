@@ -13,6 +13,7 @@ use Filament\Support\Enums\Width;
 class EditCashFlow extends EditRecord
 {
     protected static string $resource = CashFlowResource::class;
+
     protected Width|string|null $maxContentWidth = Width::Full;
 
     protected function getHeaderActions(): array
@@ -37,7 +38,9 @@ class EditCashFlow extends EditRecord
         $data['business_id'] = filled($data['branch_id'] ?? null)
             ? Branch::query()->whereKey($data['branch_id'])->value('business_id')
             : null;
-        $data['method'] = 'Cash';
+        $data['method'] = in_array($data['method'] ?? null, ['Cash', 'Bank'], true)
+            ? $data['method']
+            : 'Cash';
         $data['direction'] = CashFlow::primaryDirectionForFlowType($data['flow_type'] ?? null);
         $data['reference_no'] = null;
 
