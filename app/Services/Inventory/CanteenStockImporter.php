@@ -65,12 +65,24 @@ class CanteenStockImporter
 
     public static function scopeExcludeOpeningStockVendors(Builder $query): Builder
     {
-        return $query->whereNot(function (Builder $builder): void {
-            $builder
-                ->where('name', self::OPENING_VENDOR_NAME)
-                ->orWhere('reference', self::OPENING_VENDOR_REFERENCE)
-                ->orWhere('email', self::OPENING_VENDOR_EMAIL);
-        });
+        // Use null-safe comparisons. `NOT (a OR b OR c)` excludes rows when
+        // reference/email are NULL because SQL treats NULL OR false as unknown.
+        return $query
+            ->where(function (Builder $builder): void {
+                $builder
+                    ->whereNull('name')
+                    ->orWhere('name', '!=', self::OPENING_VENDOR_NAME);
+            })
+            ->where(function (Builder $builder): void {
+                $builder
+                    ->whereNull('reference')
+                    ->orWhere('reference', '!=', self::OPENING_VENDOR_REFERENCE);
+            })
+            ->where(function (Builder $builder): void {
+                $builder
+                    ->whereNull('email')
+                    ->orWhere('email', '!=', self::OPENING_VENDOR_EMAIL);
+            });
     }
 
     /**
