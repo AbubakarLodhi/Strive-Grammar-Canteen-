@@ -494,7 +494,8 @@ class PurchaseForm
                                 ->searchable()
                                 ->live()
                                 ->reactive()
-                                ->required()
+                                ->nullable()
+                                ->placeholder('Optional')
                                 ->options(function (callable $get): array {
                                     $productId = $get('product_id');
 
