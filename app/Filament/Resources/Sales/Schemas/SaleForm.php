@@ -322,14 +322,14 @@ class SaleForm
                                     }
 
                                     $product = Product::withTrashed()
-                                        ->select(['id', 'name', 'sku'])
+                                        ->select(['id', 'name', 'sku', 'track_inventory', 'type'])
                                         ->find($value);
 
                                     if (! $product) {
                                         return (string) $value;
                                     }
 
-                                    return $product->name.' ('.$product->sku.')';
+                                    return ProductStockAvailability::productOptionLabel($product);
                                 })
                                 ->afterStateUpdated(function ($state, callable $set, callable $get, $livewire) {
                                     $livewire->resetValidation('data.items.*.product_id');

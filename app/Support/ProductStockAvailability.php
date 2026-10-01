@@ -406,11 +406,17 @@ class ProductStockAvailability
     {
         $label = "{$product->name} ({$product->sku})";
 
-        if (! self::isProductAvailable($product, $branchId)) {
+        if (! self::productTracksInventory($product)) {
+            return $label;
+        }
+
+        $quantity = self::productTotalStock($product, $branchId);
+
+        if ($quantity <= 0) {
             return "{$label} — Out of stock";
         }
 
-        return $label;
+        return $label.' — Qty: '.self::formatQuantity($quantity);
     }
 
     public static function variantOptionLabel(ProductVariant $variant, ?string $branchId = null): string
