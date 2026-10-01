@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Models\Product;
 use App\Models\ProductVariant;
+use App\Models\Sale;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -12,6 +13,30 @@ class ProductStockAvailability
     public static function productTracksInventory(Product $product): bool
     {
         return (bool) $product->track_inventory && $product->type !== 'service';
+    }
+
+    public static function defaultVariantIdForProduct(?string $productId): ?string
+    {
+        if (! filled($productId)) {
+            return null;
+        }
+
+        return ProductVariant::query()
+            ->withoutTrashed()
+            ->where('product_id', $productId)
+            ->where('is_active', true)
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->value('id');
+    }
+
+    public static function resolveVariantIdForProduct(?string $productId, mixed $variantId = null): ?string
+    {
+        if (filled($variantId)) {
+            return (string) $variantId;
+        }
+
+        return self::defaultVariantIdForProduct($productId);
     }
 
     public static function variantStock(string $variantId, ?string $branchId = null, ?string $excludeSaleId = null): float
@@ -46,7 +71,7 @@ class ProductStockAvailability
             ->join('sale_items as si', 'si.id', '=', 'siv.sale_item_id')
             ->join('sales as s', 's.id', 'si.sale_id')
             ->where('siv.product_variant_id', $variantId)
-            ->where('s.status', \App\Models\Sale::STATUS_POSTED)
+            ->where('s.status', Sale::STATUS_POSTED)
             ->whereNull('s.deleted_at');
 
         if (filled($branchId)) {
@@ -136,7 +161,7 @@ class ProductStockAvailability
             ->join('sales as s', 's.id', '=', 'si.sale_id')
             ->join('product_variants as pv', 'pv.id', '=', 'siv.product_variant_id')
             ->where('pv.product_id', $productId)
-            ->where('s.status', \App\Models\Sale::STATUS_POSTED)
+            ->where('s.status', Sale::STATUS_POSTED)
             ->whereNull('s.deleted_at')
             ->when(filled($branchId), fn ($query) => $query->where('si.branch_id', $branchId))
             ->when(filled($excludeSaleId), fn ($query) => $query->where('s.id', '!=', $excludeSaleId))
@@ -145,7 +170,7 @@ class ProductStockAvailability
         $withoutVariants = (float) DB::table('sale_items as si')
             ->join('sales as s', 's.id', '=', 'si.sale_id')
             ->where('si.product_id', $productId)
-            ->where('s.status', \App\Models\Sale::STATUS_POSTED)
+            ->where('s.status', Sale::STATUS_POSTED)
             ->whereNull('s.deleted_at')
             ->whereNotExists(fn ($query) => $query->selectRaw('1')
                 ->from('sale_item_variants as siv')

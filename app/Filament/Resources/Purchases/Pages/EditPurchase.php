@@ -7,6 +7,7 @@ use App\Models\Branch;
 use App\Models\Payment;
 use App\Services\Finance\OperationalLedgerPoster;
 use App\Services\PaymentLedgerService;
+use App\Support\ProductStockAvailability;
 use Filament\Actions\Action;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\ViewAction;
@@ -217,10 +218,16 @@ class EditPurchase extends EditRecord
                         'tax' => $item['tax'] ?? 0,
                     ]);
 
-                    // ✅ MATCH SALE
-                    if (! empty($item['product_variant_id'])) {
+                    // Stock is tracked on purchase_item_variants. Resolve a default
+                    // variant when the form leaves product_variant_id blank.
+                    $variantId = ProductStockAvailability::resolveVariantIdForProduct(
+                        $item['product_id'] ?? null,
+                        $item['product_variant_id'] ?? null,
+                    );
+
+                    if (filled($variantId)) {
                         $purchaseItem->variants()->create([
-                            'product_variant_id' => $item['product_variant_id'],
+                            'product_variant_id' => $variantId,
                             'quantity' => $item['quantity'],
                             'unit_price' => $item['unit_price'],
                             'line_total' => $item['line_total'],
@@ -325,18 +332,22 @@ class EditPurchase extends EditRecord
                 ]);
 
                 $variant = $purchaseItem->variants()->first();
+                $variantId = ProductStockAvailability::resolveVariantIdForProduct(
+                    $item['product_id'] ?? null,
+                    $item['product_variant_id'] ?? null,
+                );
 
-                if (! empty($item['product_variant_id'])) {
+                if (filled($variantId)) {
                     if ($variant) {
                         $variant->update([
-                            'product_variant_id' => $item['product_variant_id'],
+                            'product_variant_id' => $variantId,
                             'quantity' => $item['quantity'],
                             'unit_price' => $item['unit_price'],
                             'line_total' => $item['line_total'],
                         ]);
                     } else {
                         $purchaseItem->variants()->create([
-                            'product_variant_id' => $item['product_variant_id'],
+                            'product_variant_id' => $variantId,
                             'quantity' => $item['quantity'],
                             'unit_price' => $item['unit_price'],
                             'line_total' => $item['line_total'],

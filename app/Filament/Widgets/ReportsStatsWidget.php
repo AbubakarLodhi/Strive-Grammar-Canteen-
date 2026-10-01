@@ -320,8 +320,37 @@ class ReportsStatsWidget extends Widget
 
     protected function salesBaseQuery($user, string $merchantId): EloquentBuilder
     {
-        $filters = $this->filters();
+        return $this->salesBaseQueryWithFilters($user, $merchantId, $this->filters());
+    }
 
+    protected function purchaseBaseQuery($user, string $merchantId): EloquentBuilder
+    {
+        return $this->purchaseBaseQueryWithFilters($user, $merchantId, $this->filters());
+    }
+
+    protected function salesBaseQueryWithoutDates($user, string $merchantId): EloquentBuilder
+    {
+        $filters = $this->filters();
+        $filters['date_from'] = null;
+        $filters['date_to'] = null;
+
+        return $this->salesBaseQueryWithFilters($user, $merchantId, $filters);
+    }
+
+    protected function purchaseBaseQueryWithoutDates($user, string $merchantId): EloquentBuilder
+    {
+        $filters = $this->filters();
+        $filters['date_from'] = null;
+        $filters['date_to'] = null;
+
+        return $this->purchaseBaseQueryWithFilters($user, $merchantId, $filters);
+    }
+
+    /**
+     * @param  array{business_id: mixed, branch_id: mixed, product_variant_ids: array<int, string>, date_from: mixed, date_to: mixed}  $filters
+     */
+    protected function salesBaseQueryWithFilters($user, string $merchantId, array $filters): EloquentBuilder
+    {
         $query = Sale::query()
             ->withoutTrashed()
             ->posted()
@@ -368,10 +397,11 @@ class ReportsStatsWidget extends Widget
         return $query;
     }
 
-    protected function purchaseBaseQuery($user, string $merchantId): EloquentBuilder
+    /**
+     * @param  array{business_id: mixed, branch_id: mixed, product_variant_ids: array<int, string>, date_from: mixed, date_to: mixed}  $filters
+     */
+    protected function purchaseBaseQueryWithFilters($user, string $merchantId, array $filters): EloquentBuilder
     {
-        $filters = $this->filters();
-
         $query = Purchase::query()
             ->withoutTrashed()
             ->where('merchant_id', $merchantId)
@@ -729,6 +759,10 @@ class ReportsStatsWidget extends Widget
         $saleIds = $this->salesBaseQuery($user, $merchantId)->pluck('sales.id');
         $purchaseIds = $this->purchaseBaseQuery($user, $merchantId)->pluck('purchases.id');
 
+        // Current on-hand stock should ignore the period date filters.
+        $lifetimeSaleIds = $this->salesBaseQueryWithoutDates($user, $merchantId)->pluck('sales.id');
+        $lifetimePurchaseIds = $this->purchaseBaseQueryWithoutDates($user, $merchantId)->pluck('purchases.id');
+
         $totalPurchasedQty = $purchaseIds->isEmpty()
             ? 0
             : DB::table('purchase_item_variants as piv')
@@ -749,7 +783,23 @@ class ReportsStatsWidget extends Widget
 
         $netSoldQty = $totalSoldQty;
 
-        $availableStock = $netPurchasedQty - $netSoldQty;
+        $lifetimePurchasedQty = $lifetimePurchaseIds->isEmpty()
+            ? 0
+            : DB::table('purchase_item_variants as piv')
+                ->join('purchase_items as pi', 'pi.id', '=', 'piv.purchase_item_id')
+                ->whereIn('pi.purchase_id', $lifetimePurchaseIds)
+                ->whereIn('piv.product_variant_id', $variantIds)
+                ->sum('piv.quantity');
+
+        $lifetimeSoldQty = $lifetimeSaleIds->isEmpty()
+            ? 0
+            : DB::table('sale_item_variants as siv')
+                ->join('sale_items as si', 'si.id', '=', 'siv.sale_item_id')
+                ->whereIn('si.sale_id', $lifetimeSaleIds)
+                ->whereIn('siv.product_variant_id', $variantIds)
+                ->sum('siv.quantity');
+
+        $availableStock = max(0, $lifetimePurchasedQty - $lifetimeSoldQty);
 
         $totalRevenue = $saleIds->isEmpty()
             ? 0
@@ -761,13 +811,17 @@ class ReportsStatsWidget extends Widget
                 ->sum(DB::raw('siv.quantity * pv.selling_price'));
 
         $netRevenue = $totalRevenue;
+        $lifetimeFilters = $filters;
+        $lifetimeFilters['date_from'] = null;
+        $lifetimeFilters['date_to'] = null;
+
         $stockValueQuery = DB::table('product_variants')
             ->whereIn('id', $variantIds)
             ->select('id')
             ->selectRaw(
                 $this->stockValueExpression(
                     $merchantId,
-                    $filters,
+                    $lifetimeFilters,
                     $staffBusinessIds->all(),
                     $staffBranchIds->all(),
                 ).' as total_amount'
@@ -1000,14 +1054,16 @@ class ReportsStatsWidget extends Widget
                 ? 0
                 : (int) DB::table('sales')
                     ->whereIn('id', $saleIds)
-                    ->whereBetween('created_at', [$start, $end])
+                    ->whereDate('sale_date', '>=', $start->toDateString())
+                    ->whereDate('sale_date', '<=', $end->toDateString())
                     ->count();
 
             $purchaseSeries[$index] = $purchaseIds->isEmpty()
                 ? 0
                 : (int) DB::table('purchases')
                     ->whereIn('id', $purchaseIds)
-                    ->whereBetween('created_at', [$start, $end])
+                    ->whereDate('purchase_date', '>=', $start->toDateString())
+                    ->whereDate('purchase_date', '<=', $end->toDateString())
                     ->count();
         }
 

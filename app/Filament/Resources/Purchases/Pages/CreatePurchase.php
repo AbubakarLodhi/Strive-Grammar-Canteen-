@@ -10,6 +10,7 @@ use App\Models\Merchant;
 use App\Services\Finance\OperationalLedgerPoster;
 use App\Services\Notifications\NotificationDispatcher;
 use App\Services\PaymentLedgerService;
+use App\Support\ProductStockAvailability;
 use Filament\Facades\Filament;
 use Filament\Resources\Pages\CreateRecord;
 use Illuminate\Database\Eloquent\Model;
@@ -133,10 +134,16 @@ class CreatePurchase extends CreateRecord
                     'tax' => $item['tax'] ?? 0,
                 ]);
 
-                // ✅ MATCH SALE
-                if (! empty($item['product_variant_id'])) {
+                // Stock is tracked on purchase_item_variants. If variant was left
+                // blank, attach the product's default active variant so stock updates.
+                $variantId = ProductStockAvailability::resolveVariantIdForProduct(
+                    $item['product_id'] ?? null,
+                    $item['product_variant_id'] ?? null,
+                );
+
+                if (filled($variantId)) {
                     $purchaseItem->variants()->create([
-                        'product_variant_id' => $item['product_variant_id'],
+                        'product_variant_id' => $variantId,
                         'quantity' => $item['quantity'],
                         'unit_price' => $item['unit_price'],
                         'line_total' => $item['line_total'],

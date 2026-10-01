@@ -87,6 +87,7 @@ class FinanceLedger
     public function nextBankAccountCode(?string $merchantId = null): string
     {
         $codes = LedgerAccount::query()
+            ->withTrashed()
             ->when($merchantId, fn ($query) => $query->where('merchant_id', $merchantId))
             ->pluck('code')
             ->all();
@@ -119,6 +120,7 @@ class FinanceLedger
     public function nextLedgerAccountCode(?string $merchantId = null): string
     {
         $codes = LedgerAccount::query()
+            ->withTrashed()
             ->when($merchantId, fn ($query) => $query->where('merchant_id', $merchantId))
             ->pluck('code')
             ->all();
@@ -258,6 +260,7 @@ class FinanceLedger
         }
 
         $existing = LedgerAccount::query()
+            ->withTrashed()
             ->where('merchant_id', $vendor->merchant_id)
             ->where('vendor_id', $vendor->id)
             ->first();
@@ -268,11 +271,15 @@ class FinanceLedger
         }
 
         if ($existing) {
+            if ($existing->trashed()) {
+                $existing->restore();
+            }
+
             if ($existing->name !== $name) {
                 $existing->forceFill(['name' => $name])->save();
             }
 
-            return $existing;
+            return $existing->fresh() ?? $existing;
         }
 
         return LedgerAccount::query()->create([
@@ -291,6 +298,7 @@ class FinanceLedger
     public function nextVendorPayableCode(string $merchantId): string
     {
         $used = LedgerAccount::query()
+            ->withTrashed()
             ->where('merchant_id', $merchantId)
             ->pluck('code')
             ->flip()
@@ -306,7 +314,7 @@ class FinanceLedger
     }
 
     /**
-     * Create missing vendor payable accounts and re-post purchases so balances move off Accounts Payable.
+     * Create missing vendor payable accounts and re-post purchases for newly created parties.
      */
     public function backfillVendorPayableAccounts(string $merchantId): void
     {
@@ -317,40 +325,46 @@ class FinanceLedger
             ->distinct()
             ->pluck('vendor_id');
 
+        $existingBefore = LedgerAccount::query()
+            ->where('merchant_id', $merchantId)
+            ->whereNotNull('vendor_id')
+            ->pluck('vendor_id');
+
+        $this->ensureAllVendorPayableAccounts($merchantId);
+
         if ($vendorIds->isEmpty()) {
             return;
         }
 
-        $existingVendorIds = LedgerAccount::query()
-            ->where('merchant_id', $merchantId)
-            ->whereIn('vendor_id', $vendorIds)
-            ->pluck('vendor_id');
+        $newlyProvisioned = $vendorIds->diff($existingBefore)->values();
 
-        $missingIds = $vendorIds->diff($existingVendorIds);
-
-        if ($missingIds->isEmpty()) {
+        if ($newlyProvisioned->isEmpty()) {
             return;
         }
 
-        $vendors = Vendor::query()
-            ->withTrashed()
-            ->where('merchant_id', $merchantId)
-            ->whereIn('id', $missingIds->all())
-            ->get()
-            ->reject(fn (Vendor $vendor): bool => CanteenStockImporter::isOpeningStockVendor($vendor));
-
         $poster = app(OperationalLedgerPoster::class);
 
-        foreach ($vendors as $vendor) {
-            $this->ensureVendorPayableAccount($vendor);
+        Purchase::query()
+            ->where('merchant_id', $merchantId)
+            ->whereIn('vendor_id', $newlyProvisioned->all())
+            ->where('purchase_no', '!=', CanteenStockImporter::OPENING_PURCHASE_NO)
+            ->with('vendor')
+            ->get()
+            ->each(fn (Purchase $purchase) => $poster->syncPurchase($purchase));
+    }
 
-            Purchase::query()
-                ->where('merchant_id', $merchantId)
-                ->where('vendor_id', $vendor->id)
-                ->where('purchase_no', '!=', CanteenStockImporter::OPENING_PURCHASE_NO)
-                ->get()
-                ->each(fn (Purchase $purchase) => $poster->syncPurchase($purchase));
-        }
+    /**
+     * Ensure every non-opening vendor has a Parties (payable) ledger account.
+     */
+    public function ensureAllVendorPayableAccounts(string $merchantId): void
+    {
+        Vendor::query()
+            ->where('merchant_id', $merchantId)
+            ->get()
+            ->reject(fn (Vendor $vendor): bool => CanteenStockImporter::isOpeningStockVendor($vendor))
+            ->each(function (Vendor $vendor): void {
+                $this->ensureVendorPayableAccount($vendor);
+            });
     }
 
     /**

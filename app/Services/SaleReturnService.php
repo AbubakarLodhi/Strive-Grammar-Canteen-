@@ -16,7 +16,11 @@ class SaleReturnService
     {
         DB::transaction(function () use ($sale, $data) {
 
-            $sale->loadMissing('items.product', 'items.variants');
+            $sale->loadMissing('items.product', 'items.variants', 'payments');
+
+            // Capture settlement basis BEFORE reducing sale totals, otherwise credit
+            // sales flip to cash and returns incorrectly drain cash into minus.
+            $priorDue = round((float) ($sale->due_amount ?? 0), 2);
 
             $returnItems = [];
             $subtotal = 0.0;
@@ -31,6 +35,7 @@ class SaleReturnService
 
                 $saleItem = $sale->items()
                     ->where('id', $item['sale_item_id'])
+                    ->lockForUpdate()
                     ->first();
 
                 if (! $saleItem) {
@@ -129,7 +134,11 @@ class SaleReturnService
             }
 
             self::recalculateSaleTotals($sale);
-            app(OperationalLedgerPoster::class)->syncSaleReturn($return->fresh(['sale.payments']));
+
+            app(OperationalLedgerPoster::class)->syncSaleReturn(
+                $return->fresh(['sale.payments', 'items.product', 'items.variants']),
+                $priorDue,
+            );
         });
     }
 

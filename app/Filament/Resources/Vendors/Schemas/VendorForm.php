@@ -3,15 +3,15 @@
 namespace App\Filament\Resources\Vendors\Schemas;
 
 use App\Filament\Resources\Vendors\VendorResource;
-use App\Support\GeoFormFields;
 use App\Models\Merchant;
 use App\Models\User;
 use App\Models\Vendor;
+use App\Support\GeoFormFields;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Select;
-use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\TextInput;
 use Filament\Schemas\Schema;
 use Illuminate\Validation\Rules\Unique;
 
@@ -30,10 +30,11 @@ class VendorForm
                 ->tel()
                 ->default('+92')
                 ->placeholder('+923001234567')
-                ->helperText('Enter number with country code, e.g. +923001234567')
-                ->regex('/^\+92\d{10}$/')
+                ->helperText('Optional. Enter number with country code, e.g. +923001234567')
+                ->rule('nullable|regex:/^\+92\d{10}$/')
                 ->maxLength(15)
-                ->required()
+                ->nullable()
+                ->dehydrateStateUsing(fn ($state) => filled($state) && $state !== '+92' ? $state : null)
                 ->live(onBlur: true)
                 ->afterStateUpdated(function ($state, callable $set, callable $get, $livewire) {
                     $livewire->resetValidation('data.phone');
@@ -87,8 +88,7 @@ class VendorForm
                 ->relationship(
                     'city',
                     'name',
-                    fn ($query, callable $get) =>
-                    $query->where('country_id', $get('country_id'))
+                    fn ($query, callable $get) => $query->where('country_id', $get('country_id'))
                 )
                 ->createOptionForm([
                     Select::make('country_id')
@@ -115,10 +115,8 @@ class VendorForm
 
             Hidden::make('merchant_id')
                 ->default(fn () => match (true) {
-                    Filament::auth()->user() instanceof Merchant
-                    => Filament::auth()->user()->id,
-                    Filament::auth()->user() instanceof User
-                    => Filament::auth()->user()->merchant_id,
+                    Filament::auth()->user() instanceof Merchant => Filament::auth()->user()->id,
+                    Filament::auth()->user() instanceof User => Filament::auth()->user()->merchant_id,
                     default => null,
                 })
                 ->required(),

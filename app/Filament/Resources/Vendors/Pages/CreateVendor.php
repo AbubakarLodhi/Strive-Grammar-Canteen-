@@ -4,6 +4,8 @@ namespace App\Filament\Resources\Vendors\Pages;
 
 use App\Filament\Resources\Vendors\VendorResource;
 use App\Models\Vendor;
+use App\Services\Finance\FinanceLedger;
+use App\Services\Inventory\CanteenStockImporter;
 use Filament\Facades\Filament;
 use Filament\Resources\Pages\CreateRecord;
 use Illuminate\Validation\ValidationException;
@@ -54,5 +56,9 @@ class CreateVendor extends CreateRecord
             $this->branchIds,
             Filament::auth()->user(),
         );
+
+        if (! CanteenStockImporter::isOpeningStockVendor($this->record)) {
+            app(FinanceLedger::class)->ensureVendorPayableAccount($this->record);
+        }
     }
 }

@@ -62,6 +62,43 @@ class FinanceLedgerVendorAccountTest extends TestCase
         $this->assertSame('New Name', $account->name);
     }
 
+    public function test_it_restores_a_soft_deleted_vendor_payable_account(): void
+    {
+        $merchant = $this->createMerchant();
+        $vendor = $this->createVendor($merchant, 'Paper House');
+        $ledger = new FinanceLedger;
+
+        $account = $ledger->ensureVendorPayableAccount($vendor);
+        $account->delete();
+
+        $this->assertSoftDeleted($account);
+
+        $restored = $ledger->ensureVendorPayableAccount($vendor);
+
+        $this->assertSame($account->id, $restored->id);
+        $this->assertNull($restored->deleted_at);
+        $this->assertSame(1, LedgerAccount::query()->where('vendor_id', $vendor->id)->count());
+    }
+
+    public function test_next_vendor_payable_code_skips_soft_deleted_codes(): void
+    {
+        $merchant = $this->createMerchant();
+
+        LedgerAccount::query()->create([
+            'merchant_id' => $merchant->id,
+            'code' => '2001',
+            'name' => 'Soft Deleted Party',
+            'type' => LedgerAccountType::Liability,
+            'is_bank' => false,
+            'is_system' => false,
+            'is_active' => true,
+            'opening_balance' => 0,
+            'deleted_at' => now(),
+        ]);
+
+        $this->assertSame('2002', (new FinanceLedger)->nextVendorPayableCode($merchant->id));
+    }
+
     public function test_next_vendor_payable_code_skips_accounts_payable(): void
     {
         $ledger = new FinanceLedger;

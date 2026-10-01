@@ -7,7 +7,6 @@ use App\Models\Business;
 use App\Models\Merchant;
 use App\Models\ProductVariant;
 use App\Models\User;
-use App\Support\DemoAccount;
 use BackedEnum;
 use Filament\Actions\Action;
 use Filament\Facades\Filament;
@@ -30,8 +29,35 @@ class Dashboard extends BaseDashboard
         return false;
     }
 
+    public function mount(): void
+    {
+        // Only seed defaults on a fresh visit. Do not overwrite intentionally
+        // cleared dates (null) or URL/session-provided filter state.
+        if (! empty($this->filters)) {
+            return;
+        }
+
+        $this->filters = self::defaultFilterDates();
+    }
+
+    /**
+     * Default dashboard range covers the overview chart window so existing
+     * sales/purchases are visible instead of an empty "today only" view.
+     *
+     * @return array{date_from: string, date_to: string}
+     */
+    public static function defaultFilterDates(): array
+    {
+        return [
+            'date_from' => now()->startOfMonth()->subMonths(5)->toDateString(),
+            'date_to' => now()->toDateString(),
+        ];
+    }
+
     public function filtersForm(Schema $schema): Schema
     {
+        $defaults = self::defaultFilterDates();
+
         return $schema
             ->columns(1)
             ->components([
@@ -160,9 +186,7 @@ class Dashboard extends BaseDashboard
 
                         DatePicker::make('date_from')
                             ->label('Date From')
-                            ->default(fn (): string => DemoAccount::isDemoMerchant()
-                                ? now()->subDays(30)->toDateString()
-                                : now()->toDateString())
+                            ->default($defaults['date_from'])
                             ->placeholder('Start date')
                             ->displayFormat('d/m/Y')
                             ->maxDate(now())
@@ -177,7 +201,7 @@ class Dashboard extends BaseDashboard
 
                         DatePicker::make('date_to')
                             ->label('Date To')
-                            ->default(now()->toDateString())
+                            ->default($defaults['date_to'])
                             ->placeholder('End date')
                             ->displayFormat('d/m/Y')
                             ->minDate(fn (callable $get) => $get('date_from'))

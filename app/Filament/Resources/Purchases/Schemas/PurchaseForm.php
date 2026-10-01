@@ -2,11 +2,18 @@
 
 namespace App\Filament\Resources\Purchases\Schemas;
 
-use App\Filament\Resources\Vendors\VendorResource;
 use App\Filament\Resources\Vendors\Schemas\VendorForm;
-use App\Models\Vendor;
+use App\Filament\Resources\Vendors\VendorResource;
+use App\Models\Branch;
+use App\Models\Merchant;
 use App\Models\Product;
+use App\Models\ProductVariant;
+use App\Models\User;
+use App\Models\Vendor;
+use App\Services\Finance\FinanceLedger;
+use App\Services\Inventory\CanteenStockImporter;
 use App\Services\PaymentLedgerService;
+use Filament\Actions\Action;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\FileUpload;
@@ -14,14 +21,14 @@ use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
-use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\TextInput;
 use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Section;
-use Filament\Schemas\Schema;
 use Filament\Schemas\Components\View;
-use Illuminate\Support\Facades\DB;
+use Filament\Schemas\Schema;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\HtmlString;
 use Illuminate\Validation\ValidationException;
 
@@ -43,7 +50,7 @@ class PurchaseForm
                         ->schema([
                             TextInput::make('purchase_no')
                                 ->label('Purchase Number')
-                                ->default(fn () => 'PUR-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -6)))
+                                ->default(fn () => 'PUR-'.date('Ymd').'-'.strtoupper(substr(uniqid(), -6)))
                                 ->required()
                                 ->maxLength(255)
                                 ->unique(ignoreRecord: true)
@@ -82,7 +89,7 @@ class PurchaseForm
                                 ->preload()
                                 ->required()
                                 ->suffixAction(
-                                    \Filament\Actions\Action::make('createVendor')
+                                    Action::make('createVendor')
                                         ->icon('heroicon-s-plus')
                                         ->tooltip('Create Vendor')
                                         ->modalHeading('Create Vendor')
@@ -120,6 +127,11 @@ class PurchaseForm
                                                     $branchIds,
                                                     Filament::auth()->user(),
                                                 );
+
+                                                if (! CanteenStockImporter::isOpeningStockVendor($vendor)) {
+                                                    app(FinanceLedger::class)
+                                                        ->ensureVendorPayableAccount($vendor);
+                                                }
 
                                                 return $vendor;
                                             });
@@ -199,13 +211,12 @@ class PurchaseForm
                 ->extraAttributes(['class' => 'line-items-section'])
                 ->columnSpanFull()
                 ->headerActions([
-                    \Filament\Actions\Action::make('usePercentMode')
+                    Action::make('usePercentMode')
                         ->label('Percent')
                         ->extraAttributes(fn (callable $get) => [
-                            'class' => 'discount-mode-toggle left' . (($get('discount_mode') ?? 'percent') === 'percent' ? ' is-active' : ''),
+                            'class' => 'discount-mode-toggle left'.(($get('discount_mode') ?? 'percent') === 'percent' ? ' is-active' : ''),
                         ])
-                        ->disabled(fn (callable $get) =>
-                            (bool) ($get('is_partial_return') ?? false) || ($get('discount_mode') ?? 'percent') === 'percent'
+                        ->disabled(fn (callable $get) => (bool) ($get('is_partial_return') ?? false) || ($get('discount_mode') ?? 'percent') === 'percent'
                         )
                         ->action(function (callable $set, callable $get) {
                             $items = $get('items') ?? [];
@@ -231,13 +242,12 @@ class PurchaseForm
                             $set('items', $items);
                             $set('discount_mode', 'percent');
                         }),
-                    \Filament\Actions\Action::make('useAmountMode')
+                    Action::make('useAmountMode')
                         ->label('Amount')
                         ->extraAttributes(fn (callable $get) => [
-                            'class' => 'discount-mode-toggle right' . (($get('discount_mode') ?? 'percent') === 'amount' ? ' is-active' : ''),
+                            'class' => 'discount-mode-toggle right'.(($get('discount_mode') ?? 'percent') === 'amount' ? ' is-active' : ''),
                         ])
-                        ->disabled(fn (callable $get) =>
-                            (bool) ($get('is_partial_return') ?? false) || ($get('discount_mode') ?? 'percent') === 'amount'
+                        ->disabled(fn (callable $get) => (bool) ($get('is_partial_return') ?? false) || ($get('discount_mode') ?? 'percent') === 'amount'
                         )
                         ->action(function (callable $set, callable $get) {
                             $items = $get('items') ?? [];
@@ -263,12 +273,12 @@ class PurchaseForm
                             $set('items', $items);
                             $set('discount_mode', 'amount');
                         }),
-                    \Filament\Actions\Action::make('previousItemsPage')
+                    Action::make('previousItemsPage')
                         ->label('Previous')
                         ->visible(fn (callable $get) => (bool) ($get('paginated_items_mode') ?? false))
                         ->disabled(fn (callable $get) => (int) ($get('items_page') ?? 1) <= 1)
                         ->action(fn ($livewire) => $livewire->previousItemsPage()),
-                    \Filament\Actions\Action::make('nextItemsPage')
+                    Action::make('nextItemsPage')
                         ->label('Next')
                         ->visible(fn (callable $get) => (bool) ($get('paginated_items_mode') ?? false))
                         ->disabled(fn (callable $get) => (int) ($get('items_page') ?? 1) >= (int) ($get('items_last_page') ?? 1))
@@ -298,31 +308,29 @@ class PurchaseForm
                             Hidden::make('purchase_item_id')
                                 ->dehydrated(),
 
-//                            /* -------- BUSINESS -------- */
-//                            Select::make('business_id')
-//                                ->label('Business')
-//                                ->searchable()
-//                                ->preload()
-//                                ->required()
-//                                ->options(fn () =>
-//                                \App\Models\Business::query()
-//                                    ->where('merchant_id', self::merchantId())
-//                                    ->orderBy('name')
-//                                    ->pluck('name', 'id')
-//                                    ->toArray()
-//                                )
-//                                ->reactive()
-//                                ->afterStateUpdated(fn (callable $set) => [
-//                                    $set('branch_id', null),
-//                                    $set('product_id', null),
-//                                    $set('product_variant_id', null),
-//                                ]),
+                            //                            /* -------- BUSINESS -------- */
+                            //                            Select::make('business_id')
+                            //                                ->label('Business')
+                            //                                ->searchable()
+                            //                                ->preload()
+                            //                                ->required()
+                            //                                ->options(fn () =>
+                            //                                \App\Models\Business::query()
+                            //                                    ->where('merchant_id', self::merchantId())
+                            //                                    ->orderBy('name')
+                            //                                    ->pluck('name', 'id')
+                            //                                    ->toArray()
+                            //                                )
+                            //                                ->reactive()
+                            //                                ->afterStateUpdated(fn (callable $set) => [
+                            //                                    $set('branch_id', null),
+                            //                                    $set('product_id', null),
+                            //                                    $set('product_variant_id', null),
+                            //                                ]),
 
                             /* -------- BRANCH -------- */
 
-
-
-        /* -------- PRODUCT -------- */
+                            /* -------- PRODUCT -------- */
                             Select::make('product_id')
                                 ->label('Product')
                                 ->searchable()
@@ -337,7 +345,7 @@ class PurchaseForm
                                         return null;
                                     }
 
-                                    $product = \App\Models\Product::withTrashed()
+                                    $product = Product::withTrashed()
                                         ->select(['id', 'name', 'sku'])
                                         ->find($value);
 
@@ -345,7 +353,7 @@ class PurchaseForm
                                         return (string) $value;
                                     }
 
-                                    return $product->name . ' (' . $product->sku . ')';
+                                    return $product->name.' ('.$product->sku.')';
                                 })
                                 ->afterStateUpdated(function ($state, callable $set, callable $get, $livewire) {
                                     $livewire->resetValidation('data.items.*.product_id');
@@ -365,7 +373,7 @@ class PurchaseForm
 
                                     $user = Filament::auth()->user();
 
-                                    $branchQuery = \App\Models\Branch::query()
+                                    $branchQuery = Branch::query()
                                         ->withoutTrashed()
                                         ->where('merchant_id', self::merchantId())
                                         ->whereExists(function ($q) use ($state) {
@@ -375,7 +383,7 @@ class PurchaseForm
                                                 ->where('branch_products.product_id', $state);
                                         });
 
-                                    if ($user instanceof \App\Models\User) {
+                                    if ($user instanceof User) {
                                         $branchQuery->whereIn(
                                             'branches.id',
                                             $user->branches()->pluck('branches.id')
@@ -397,7 +405,7 @@ class PurchaseForm
                                         return;
                                     }
 
-                                    $qty  = (float) ($get('quantity') ?? 1);
+                                    $qty = (float) ($get('quantity') ?? 1);
                                     $unit = (float) ($product->purchase_price ?? 0);
 
                                     $set('unit_price', $unit);
@@ -422,7 +430,7 @@ class PurchaseForm
 
                                     $user = Filament::auth()->user();
 
-                                    $query = \App\Models\Branch::query()
+                                    $query = Branch::query()
                                         ->withoutTrashed()
                                         ->with('business')
                                         ->where('merchant_id', self::merchantId())
@@ -434,7 +442,7 @@ class PurchaseForm
                                         });
 
                                     // Staff → only assigned branches
-                                    if ($user instanceof \App\Models\User) {
+                                    if ($user instanceof User) {
                                         $query->whereIn(
                                             'branches.id',
                                             $user->branches()->pluck('branches.id')
@@ -446,9 +454,8 @@ class PurchaseForm
                                         ->orderBy('branches.name')
                                         ->get()
                                         ->groupBy(fn ($branch) => $branch->business?->name ?? 'Other')
-                                        ->map(fn ($group) =>
-                                        $group->pluck('name', 'id')
-                                            ->map(fn ($name) => '&nbsp;&nbsp;&nbsp;&nbsp;' . e($name))
+                                        ->map(fn ($group) => $group->pluck('name', 'id')
+                                            ->map(fn ($name) => '&nbsp;&nbsp;&nbsp;&nbsp;'.e($name))
                                             ->toArray()
                                         )
                                         ->toArray();
@@ -461,7 +468,7 @@ class PurchaseForm
                                         return;
                                     }
 
-                                    $branches = \App\Models\Branch::query()
+                                    $branches = Branch::query()
                                         ->withoutTrashed()
                                         ->where('merchant_id', self::merchantId())
                                         ->whereExists(function ($q) use ($productId) {
@@ -486,9 +493,7 @@ class PurchaseForm
                                     self::recalcTotals($set, $get);
                                 }),
 
-
-
-        /* -------- VARIANT -------- */
+                            /* -------- VARIANT -------- */
                             Select::make('product_variant_id')
                                 ->label('Product Variant')
                                 ->searchable()
@@ -503,7 +508,7 @@ class PurchaseForm
                                         return [];
                                     }
 
-                                    return \App\Models\ProductVariant::query()
+                                    return ProductVariant::query()
                                         ->withoutTrashed()
                                         ->where('product_id', $productId)
                                         ->limit(50)
@@ -523,7 +528,7 @@ class PurchaseForm
                                         return null;
                                     }
 
-                                    $variant = \App\Models\ProductVariant::withTrashed()
+                                    $variant = ProductVariant::withTrashed()
                                         ->select(['id', 'name', 'sku'])
                                         ->find($value);
 
@@ -557,16 +562,17 @@ class PurchaseForm
                                         $set('line_subtotal', 0);
                                         $set('line_total', 0);
                                         self::recalcTotals($set, $get);
+
                                         return;
                                     }
 
-                                    $variant = \App\Models\ProductVariant::select(['id', 'purchase_price'])->find($state);
+                                    $variant = ProductVariant::select(['id', 'purchase_price'])->find($state);
 
                                     if (! $variant) {
                                         return;
                                     }
 
-                                    $qty  = (float) ($get('quantity') ?? 1);
+                                    $qty = (float) ($get('quantity') ?? 1);
                                     $unit = (float) ($variant->purchase_price ?? 0);
 
                                     $set('unit_price', $unit);
@@ -575,7 +581,6 @@ class PurchaseForm
 
                                     self::recalcTotals($set, $get);
                                 }),
-
 
                             /* -------- QUANTITY -------- */
                             TextInput::make('quantity')
@@ -658,6 +663,7 @@ class PurchaseForm
                                 ->afterStateHydrated(function ($state, callable $set) {
                                     if ($state === null || $state === '') {
                                         $set('discount', 0);
+
                                         return;
                                     }
                                     $set('discount', (float) $state);
@@ -727,6 +733,7 @@ class PurchaseForm
                                 ->afterStateHydrated(function ($state, callable $set) {
                                     if ($state === null || $state === '') {
                                         $set('tax', 0);
+
                                         return;
                                     }
                                     $set('tax', (float) $state);
@@ -852,8 +859,7 @@ class PurchaseForm
                             $set('items', $items);
                             self::recalcTotals($set, $get);
                         })
-                        ->afterStateUpdated(fn (callable $set, callable $get) =>
-                        self::recalcTotals($set, $get)
+                        ->afterStateUpdated(fn (callable $set, callable $get) => self::recalcTotals($set, $get)
                         ),
                 ]),
 
@@ -868,29 +874,25 @@ class PurchaseForm
                     Placeholder::make('subtotal_display')
                         ->label('Subtotal')
                         ->extraAttributes(['data-summary' => 'subtotal'])
-                        ->content(fn (callable $get) =>
-                        'PKR ' . number_format((float) ($get('subtotal') ?? 0), 2)
+                        ->content(fn (callable $get) => 'PKR '.number_format((float) ($get('subtotal') ?? 0), 2)
                         ),
 
                     Placeholder::make('total_discount_display')
                         ->label('Discount')
                         ->extraAttributes(['data-summary' => 'discount'])
-                        ->content(fn (callable $get) =>
-                        'PKR ' . number_format((float) ($get('total_discount') ?? 0), 2)
+                        ->content(fn (callable $get) => 'PKR '.number_format((float) ($get('total_discount') ?? 0), 2)
                         ),
 
                     Placeholder::make('total_tax_display')
                         ->label('Tax')
                         ->extraAttributes(['data-summary' => 'tax'])
-                        ->content(fn (callable $get) =>
-                        'PKR ' . number_format((float) ($get('total_tax') ?? 0), 2)
+                        ->content(fn (callable $get) => 'PKR '.number_format((float) ($get('total_tax') ?? 0), 2)
                         ),
 
                     Placeholder::make('total_amount_display')
                         ->label('Total Amount')
                         ->extraAttributes(['data-summary' => 'total'])
-                        ->content(fn (callable $get) =>
-                        'PKR ' . number_format((float) ($get('total_amount') ?? 0), 2)
+                        ->content(fn (callable $get) => 'PKR '.number_format((float) ($get('total_amount') ?? 0), 2)
                         ),
 
                     TextInput::make('current_payment_amount')
@@ -927,8 +929,7 @@ class PurchaseForm
                     Placeholder::make('due_amount_display')
                         ->label('Amount Due')
                         ->live()
-                        ->content(fn (callable $get) =>
-                            'PKR ' . number_format((float) ($get('due_amount') ?? 0), 2)
+                        ->content(fn (callable $get) => 'PKR '.number_format((float) ($get('due_amount') ?? 0), 2)
                         ),
 
                     Hidden::make('subtotal')->default(0)->dehydrated(),
@@ -945,8 +946,7 @@ class PurchaseForm
                     Placeholder::make('previous_paid_amount_display')
                         ->label('Already Paid')
                         ->live()
-                        ->content(fn (callable $get) =>
-                            'PKR ' . number_format((float) ($get('previous_paid_amount') ?? 0), 2)
+                        ->content(fn (callable $get) => 'PKR '.number_format((float) ($get('previous_paid_amount') ?? 0), 2)
                         ),
 
                     Placeholder::make('payment_history')
@@ -994,9 +994,9 @@ class PurchaseForm
         $user = Filament::auth()->user();
 
         return match (true) {
-            $user instanceof \App\Models\Merchant => $user->id,
-            $user instanceof \App\Models\User     => $user->merchant_id,
-            default                               => null,
+            $user instanceof Merchant => $user->id,
+            $user instanceof User => $user->merchant_id,
+            default => null,
         };
     }
 
@@ -1004,7 +1004,7 @@ class PurchaseForm
     {
         $user = Filament::auth()->user();
 
-        $merchant = $user instanceof \App\Models\Merchant
+        $merchant = $user instanceof Merchant
             ? $user
             : $user?->merchant;
 
@@ -1020,7 +1020,7 @@ class PurchaseForm
             ->where('products.is_active', true)
             ->where('products.merchant_id', self::merchantId());
 
-        if ($user instanceof \App\Models\User) {
+        if ($user instanceof User) {
             $branchIds = $user->branches()->pluck('branches.id');
 
             $query->whereExists(function ($q) use ($branchIds) {
@@ -1064,13 +1064,13 @@ class PurchaseForm
             $rootPrefix = '../../';
         }
 
-        if ((bool) ($get($rootPrefix . 'paginated_items_mode') ?? false)) {
+        if ((bool) ($get($rootPrefix.'paginated_items_mode') ?? false)) {
             self::syncPaymentFromTotals($set, $get, $rootPrefix);
 
             return;
         }
 
-        $discountMode = $get($rootPrefix . 'discount_mode') ?? 'percent';
+        $discountMode = $get($rootPrefix.'discount_mode') ?? 'percent';
         $subtotal = 0.0;
         $totalDiscount = 0.0;
         $totalTax = 0.0;
@@ -1105,19 +1105,19 @@ class PurchaseForm
             $totalTax += $taxAmount;
         }
 
-        $set($rootPrefix . 'subtotal', $subtotal);
-        $set($rootPrefix . 'total_discount', $totalDiscount);
-        $set($rootPrefix . 'total_tax', $totalTax);
-        $set($rootPrefix . 'total_amount', $subtotal - $totalDiscount + $totalTax);
+        $set($rootPrefix.'subtotal', $subtotal);
+        $set($rootPrefix.'total_discount', $totalDiscount);
+        $set($rootPrefix.'total_tax', $totalTax);
+        $set($rootPrefix.'total_amount', $subtotal - $totalDiscount + $totalTax);
         self::syncPaymentFromTotals($set, $get, $rootPrefix);
     }
 
     private static function syncPaymentFromTotals(callable $set, callable $get, string $rootPrefix = ''): void
     {
-        $totalAmount = max(0, (float) ($get($rootPrefix . 'total_amount') ?? 0));
-        $previousPaid = max(0, (float) ($get($rootPrefix . 'previous_paid_amount') ?? 0));
+        $totalAmount = max(0, (float) ($get($rootPrefix.'total_amount') ?? 0));
+        $previousPaid = max(0, (float) ($get($rootPrefix.'previous_paid_amount') ?? 0));
         $maxCurrentPayment = max(0, $totalAmount - $previousPaid);
-        $currentPaymentValue = $get($rootPrefix . 'current_payment_amount');
+        $currentPaymentValue = $get($rootPrefix.'current_payment_amount');
 
         $currentPayment = $currentPaymentValue === null || $currentPaymentValue === ''
             ? ($previousPaid > 0 ? 0.0 : $totalAmount)
@@ -1127,10 +1127,10 @@ class PurchaseForm
         $paidAmount = max(0, min($totalAmount, $previousPaid + $currentPayment));
         $dueAmount = max(0, $totalAmount - $paidAmount);
 
-        $set($rootPrefix . 'current_payment_amount', round($currentPayment, 2));
-        $set($rootPrefix . 'paid_amount', round($paidAmount, 2));
-        $set($rootPrefix . 'due_amount', round($dueAmount, 2));
-        $set($rootPrefix . 'payment_type', $dueAmount > 0 ? 'credit' : 'cash');
+        $set($rootPrefix.'current_payment_amount', round($currentPayment, 2));
+        $set($rootPrefix.'paid_amount', round($paidAmount, 2));
+        $set($rootPrefix.'due_amount', round($dueAmount, 2));
+        $set($rootPrefix.'payment_type', $dueAmount > 0 ? 'credit' : 'cash');
     }
 
     private static function renderPaymentHistory($record): HtmlString
@@ -1148,32 +1148,32 @@ class PurchaseForm
         $rows = $payments->map(function ($payment) {
             $date = $payment->payment_date?->format('d/m/Y') ?? '—';
             $type = ucfirst((string) ($payment->entry_type ?? 'payment'));
-            $amount = 'PKR ' . number_format((float) ($payment->display_amount ?? 0), 2);
+            $amount = 'PKR '.number_format((float) ($payment->display_amount ?? 0), 2);
 
             $actionButton = '';
             if ((float) ($payment->amount ?? 0) > 0 && (string) ($payment->entry_type ?? 'payment') === 'payment') {
-                $actionButton = '<button type="button" wire:click="confirmReversePayment(\'' . e((string) $payment->id) . '\')"'
-                    . ' style="padding:2px 8px;border:1px solid #ef4444;border-radius:6px;color:#b91c1c;background:#fff;">-</button>';
+                $actionButton = '<button type="button" wire:click="confirmReversePayment(\''.e((string) $payment->id).'\')"'
+                    .' style="padding:2px 8px;border:1px solid #ef4444;border-radius:6px;color:#b91c1c;background:#fff;">-</button>';
             }
 
             return '<tr>'
-                . '<td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;">' . e($date) . '</td>'
-                . '<td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;">' . e($type) . '</td>'
-                . '<td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;text-align:right;">' . e($amount) . '</td>'
-                . '<td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;text-align:center;">' . $actionButton . '</td>'
-                . '</tr>';
+                .'<td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;">'.e($date).'</td>'
+                .'<td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;">'.e($type).'</td>'
+                .'<td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;text-align:right;">'.e($amount).'</td>'
+                .'<td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;text-align:center;">'.$actionButton.'</td>'
+                .'</tr>';
         })->implode('');
 
         $html = '<div style="overflow:auto;">'
-            . '<table style="width:100%;border-collapse:collapse;font-size:12px;">'
-            . '<thead><tr>'
-            . '<th style="text-align:left;padding:6px 8px;border-bottom:1px solid #d1d5db;">Date</th>'
-            . '<th style="text-align:left;padding:6px 8px;border-bottom:1px solid #d1d5db;">Type</th>'
-            . '<th style="text-align:right;padding:6px 8px;border-bottom:1px solid #d1d5db;">Amount</th>'
-            . '<th style="text-align:center;padding:6px 8px;border-bottom:1px solid #d1d5db;">Action</th>'
-            . '</tr></thead><tbody>'
-            . $rows
-            . '</tbody></table></div>';
+            .'<table style="width:100%;border-collapse:collapse;font-size:12px;">'
+            .'<thead><tr>'
+            .'<th style="text-align:left;padding:6px 8px;border-bottom:1px solid #d1d5db;">Date</th>'
+            .'<th style="text-align:left;padding:6px 8px;border-bottom:1px solid #d1d5db;">Type</th>'
+            .'<th style="text-align:right;padding:6px 8px;border-bottom:1px solid #d1d5db;">Amount</th>'
+            .'<th style="text-align:center;padding:6px 8px;border-bottom:1px solid #d1d5db;">Action</th>'
+            .'</tr></thead><tbody>'
+            .$rows
+            .'</tbody></table></div>';
 
         return new HtmlString($html);
     }
