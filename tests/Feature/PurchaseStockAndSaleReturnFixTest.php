@@ -25,6 +25,7 @@ use App\Services\PaymentLedgerService;
 use App\Services\SaleReturnService;
 use App\Support\ProductStockAvailability;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -76,6 +77,92 @@ class PurchaseStockAndSaleReturnFixTest extends TestCase
         ]);
 
         $this->assertSame(5.0, ProductStockAvailability::variantStock($variant->id, $branch->id));
+    }
+
+    public function test_purchase_resolves_missing_branch_and_variant_for_stock(): void
+    {
+        [$merchant, $branch, $variant] = $this->seedStockedProduct(quantity: 0);
+        $product = $variant->product;
+
+        DB::table('branch_products')->insert([
+            'id' => (string) Str::uuid(),
+            'branch_id' => $branch->id,
+            'product_id' => $product->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $resolvedBranchId = ProductStockAvailability::resolveBranchIdForProduct($product->id, null);
+        $this->assertSame($branch->id, $resolvedBranchId);
+
+        $resolvedVariantId = ProductStockAvailability::resolveVariantIdForProduct($product->id, null);
+        $this->assertSame($variant->id, $resolvedVariantId);
+
+        $purchase = Purchase::query()->create([
+            'id' => Str::uuid()->toString(),
+            'merchant_id' => $merchant->id,
+            'purchase_no' => 'PUR-SOCKS-1',
+            'purchase_date' => now()->toDateString(),
+            'subtotal' => 200,
+            'total_amount' => 200,
+            'paid_amount' => 200,
+            'due_amount' => 0,
+            'payment_type' => 'cash',
+        ]);
+
+        $branchModel = Branch::query()->find($resolvedBranchId);
+
+        $purchaseItem = PurchaseItem::query()->create([
+            'id' => Str::uuid()->toString(),
+            'purchase_id' => $purchase->id,
+            'business_id' => $branchModel->business_id,
+            'branch_id' => $branchModel->id,
+            'product_id' => $product->id,
+            'quantity' => 10,
+            'unit_price' => 20,
+            'line_total' => 200,
+            'discount' => 0,
+            'tax' => 0,
+        ]);
+
+        $purchaseItem->variants()->create([
+            'product_variant_id' => $resolvedVariantId,
+            'quantity' => 10,
+            'unit_price' => 20,
+            'line_total' => 200,
+        ]);
+
+        $this->assertSame(10.0, ProductStockAvailability::variantStock($variant->id, $branch->id));
+        $this->assertSame(10.0, ProductStockAvailability::productTotalStock($product->fresh(), $branch->id));
+    }
+
+    public function test_ensure_default_variant_creates_standard_when_missing(): void
+    {
+        $merchant = $this->createMerchant();
+
+        $product = Product::query()->create([
+            'id' => Str::uuid()->toString(),
+            'merchant_id' => $merchant->id,
+            'name' => 'Socks Large',
+            'sku' => 'SOCK-L',
+            'selling_price' => 100,
+            'purchase_price' => 50,
+            'track_inventory' => true,
+            'type' => 'product',
+            'is_active' => true,
+        ]);
+
+        $this->assertNull(ProductStockAvailability::defaultVariantIdForProduct($product->id));
+
+        $variantId = ProductStockAvailability::ensureDefaultVariantIdForProduct($product->id);
+
+        $this->assertNotNull($variantId);
+        $this->assertDatabaseHas('product_variants', [
+            'id' => $variantId,
+            'product_id' => $product->id,
+            'name' => 'Standard',
+            'is_active' => true,
+        ]);
     }
 
     public function test_credit_sale_return_reduces_receivable_instead_of_draining_cash(): void

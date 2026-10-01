@@ -13,6 +13,7 @@ use App\Models\Vendor;
 use App\Services\Finance\FinanceLedger;
 use App\Services\Inventory\CanteenStockImporter;
 use App\Services\PaymentLedgerService;
+use App\Support\ProductStockAvailability;
 use Filament\Actions\Action;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\DatePicker;
@@ -346,14 +347,14 @@ class PurchaseForm
                                     }
 
                                     $product = Product::withTrashed()
-                                        ->select(['id', 'name', 'sku'])
+                                        ->select(['id', 'name', 'sku', 'track_inventory', 'type'])
                                         ->find($value);
 
                                     if (! $product) {
                                         return (string) $value;
                                     }
 
-                                    return $product->name.' ('.$product->sku.')';
+                                    return self::productOptionLabel($product);
                                 })
                                 ->afterStateUpdated(function ($state, callable $set, callable $get, $livewire) {
                                     $livewire->resetValidation('data.items.*.product_id');
@@ -1047,11 +1048,24 @@ class PurchaseForm
         }
 
         return $query
-            ->get(['products.id', 'products.name', 'products.sku'])
+            ->get(['products.id', 'products.name', 'products.sku', 'products.track_inventory', 'products.type'])
             ->mapWithKeys(fn (Product $product) => [
-                $product->id => "{$product->name} ({$product->sku})",
+                $product->id => self::productOptionLabel($product),
             ])
             ->all();
+    }
+
+    private static function productOptionLabel(Product $product): string
+    {
+        $label = "{$product->name} ({$product->sku})";
+
+        if (! ProductStockAvailability::productTracksInventory($product)) {
+            return $label;
+        }
+
+        $quantity = ProductStockAvailability::productTotalStock($product);
+
+        return $label.' — Qty: '.ProductStockAvailability::formatQuantity($quantity);
     }
 
     private static function recalcTotals(callable $set, callable $get): void

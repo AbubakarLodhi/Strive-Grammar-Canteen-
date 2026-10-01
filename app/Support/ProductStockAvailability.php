@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Models\Branch;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\Sale;
@@ -36,7 +37,60 @@ class ProductStockAvailability
             return (string) $variantId;
         }
 
-        return self::defaultVariantIdForProduct($productId);
+        return self::ensureDefaultVariantIdForProduct($productId);
+    }
+
+    public static function ensureDefaultVariantIdForProduct(?string $productId): ?string
+    {
+        if (! filled($productId)) {
+            return null;
+        }
+
+        $existing = self::defaultVariantIdForProduct($productId);
+
+        if (filled($existing)) {
+            return $existing;
+        }
+
+        $product = Product::query()->withoutTrashed()->find($productId);
+
+        if (! $product) {
+            return null;
+        }
+
+        $skuBase = filled($product->sku) ? (string) $product->sku : 'SKU-'.substr((string) $product->id, 0, 8);
+
+        $variant = ProductVariant::query()->create([
+            'merchant_id' => $product->merchant_id,
+            'product_id' => $product->id,
+            'name' => 'Standard',
+            'sku' => $skuBase.'-STD',
+            'selling_price' => $product->selling_price,
+            'purchase_price' => $product->purchase_price,
+            'is_active' => true,
+        ]);
+
+        return (string) $variant->id;
+    }
+
+    public static function resolveBranchIdForProduct(?string $productId, mixed $branchId = null): ?string
+    {
+        if (filled($branchId)) {
+            $branch = Branch::query()->withTrashed()->find($branchId);
+
+            if ($branch) {
+                return (string) $branch->id;
+            }
+        }
+
+        if (! filled($productId)) {
+            return null;
+        }
+
+        return DB::table('branch_products')
+            ->where('product_id', $productId)
+            ->orderBy('created_at')
+            ->value('branch_id');
     }
 
     public static function variantStock(string $variantId, ?string $branchId = null, ?string $excludeSaleId = null): float

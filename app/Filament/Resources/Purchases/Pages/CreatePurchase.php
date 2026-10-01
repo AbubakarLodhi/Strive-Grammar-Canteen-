@@ -15,6 +15,7 @@ use Filament\Resources\Pages\CreateRecord;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 use Throwable;
 
 class CreatePurchase extends CreateRecord
@@ -56,6 +57,12 @@ class CreatePurchase extends CreateRecord
             $items = self::normalizeItems($items);
             $paymentDate = $data['payment_date'] ?? null;
             unset($data['payment_date']);
+
+            if ($items === []) {
+                throw ValidationException::withMessages([
+                    'data.items' => 'Add at least one product line before saving the purchase.',
+                ]);
+            }
 
             /* -----------------------------
              | CREATED BY
@@ -111,13 +118,34 @@ class CreatePurchase extends CreateRecord
             /* -----------------------------
              | CREATE ITEMS + VARIANTS ✅
              ----------------------------- */
-            foreach ($items as $item) {
+            $createdItems = 0;
 
-                $branch = Branch::select('id', 'business_id')
-                    ->find($item['branch_id']);
+            foreach ($items as $index => $item) {
+                if (! filled($item['product_id'] ?? null)) {
+                    throw ValidationException::withMessages([
+                        "data.items.{$index}.product_id" => 'Select a product for every line.',
+                    ]);
+                }
+
+                if ((float) ($item['quantity'] ?? 0) <= 0) {
+                    throw ValidationException::withMessages([
+                        "data.items.{$index}.quantity" => 'Enter a quantity greater than zero.',
+                    ]);
+                }
+
+                $branchId = ProductStockAvailability::resolveBranchIdForProduct(
+                    $item['product_id'] ?? null,
+                    $item['branch_id'] ?? null,
+                );
+
+                $branch = filled($branchId)
+                    ? Branch::query()->withTrashed()->select('id', 'business_id')->find($branchId)
+                    : null;
 
                 if (! $branch) {
-                    continue;
+                    throw ValidationException::withMessages([
+                        "data.items.{$index}.branch_id" => 'Select a branch for every product line.',
+                    ]);
                 }
 
                 $purchaseItem = $purchase->items()->create([
@@ -131,21 +159,33 @@ class CreatePurchase extends CreateRecord
                     'tax' => $item['tax'] ?? 0,
                 ]);
 
-                // Stock is tracked on purchase_item_variants. If variant was left
-                // blank, attach the product's default active variant so stock updates.
+                // Stock is tracked on purchase_item_variants. Resolve/create a
+                // default variant when the form leaves product_variant_id blank.
                 $variantId = ProductStockAvailability::resolveVariantIdForProduct(
                     $item['product_id'] ?? null,
                     $item['product_variant_id'] ?? null,
                 );
 
-                if (filled($variantId)) {
-                    $purchaseItem->variants()->create([
-                        'product_variant_id' => $variantId,
-                        'quantity' => $item['quantity'],
-                        'unit_price' => $item['unit_price'],
-                        'line_total' => $item['line_total'],
+                if (! filled($variantId)) {
+                    throw ValidationException::withMessages([
+                        "data.items.{$index}.product_variant_id" => 'Unable to resolve a product variant for stock tracking.',
                     ]);
                 }
+
+                $purchaseItem->variants()->create([
+                    'product_variant_id' => $variantId,
+                    'quantity' => $item['quantity'],
+                    'unit_price' => $item['unit_price'],
+                    'line_total' => $item['line_total'],
+                ]);
+
+                $createdItems++;
+            }
+
+            if ($createdItems === 0) {
+                throw ValidationException::withMessages([
+                    'data.items' => 'Purchase lines could not be saved. Check product and branch selection.',
+                ]);
             }
 
             /* -----------------------------

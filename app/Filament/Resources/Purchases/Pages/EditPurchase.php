@@ -197,13 +197,26 @@ class EditPurchase extends EditRecord
                 // Clear existing
                 $this->record->items()->delete();
 
-                foreach ($items as $item) {
+                foreach ($items as $index => $item) {
+                    if (! filled($item['product_id'] ?? null) || (float) ($item['quantity'] ?? 0) <= 0) {
+                        throw ValidationException::withMessages([
+                            "data.items.{$index}.product_id" => 'Each line needs a product and quantity.',
+                        ]);
+                    }
 
-                    $branch = Branch::select('id', 'business_id')
-                        ->find($item['branch_id']);
+                    $branchId = ProductStockAvailability::resolveBranchIdForProduct(
+                        $item['product_id'] ?? null,
+                        $item['branch_id'] ?? null,
+                    );
+
+                    $branch = filled($branchId)
+                        ? Branch::query()->withTrashed()->select('id', 'business_id')->find($branchId)
+                        : null;
 
                     if (! $branch) {
-                        continue;
+                        throw ValidationException::withMessages([
+                            "data.items.{$index}.branch_id" => 'Select a branch for every product line.',
+                        ]);
                     }
 
                     $purchaseItem = $this->record->items()->create([
@@ -217,21 +230,25 @@ class EditPurchase extends EditRecord
                         'tax' => $item['tax'] ?? 0,
                     ]);
 
-                    // Stock is tracked on purchase_item_variants. Resolve a default
-                    // variant when the form leaves product_variant_id blank.
+                    // Stock is tracked on purchase_item_variants. Resolve/create a
+                    // default variant when the form leaves product_variant_id blank.
                     $variantId = ProductStockAvailability::resolveVariantIdForProduct(
                         $item['product_id'] ?? null,
                         $item['product_variant_id'] ?? null,
                     );
 
-                    if (filled($variantId)) {
-                        $purchaseItem->variants()->create([
-                            'product_variant_id' => $variantId,
-                            'quantity' => $item['quantity'],
-                            'unit_price' => $item['unit_price'],
-                            'line_total' => $item['line_total'],
+                    if (! filled($variantId)) {
+                        throw ValidationException::withMessages([
+                            "data.items.{$index}.product_variant_id" => 'Unable to resolve a product variant for stock tracking.',
                         ]);
                     }
+
+                    $purchaseItem->variants()->create([
+                        'product_variant_id' => $variantId,
+                        'quantity' => $item['quantity'],
+                        'unit_price' => $item['unit_price'],
+                        'line_total' => $item['line_total'],
+                    ]);
                 }
             }
 
@@ -307,11 +324,19 @@ class EditPurchase extends EditRecord
                     continue;
                 }
 
-                $branch = Branch::select('id', 'business_id')
-                    ->find($item['branch_id']);
+                $branchId = ProductStockAvailability::resolveBranchIdForProduct(
+                    $item['product_id'] ?? null,
+                    $item['branch_id'] ?? null,
+                );
+
+                $branch = filled($branchId)
+                    ? Branch::query()->withTrashed()->select('id', 'business_id')->find($branchId)
+                    : null;
 
                 if (! $branch) {
-                    continue;
+                    throw ValidationException::withMessages([
+                        'data.items' => 'Select a branch for every product line.',
+                    ]);
                 }
 
                 $purchaseItem->update([
@@ -331,24 +356,26 @@ class EditPurchase extends EditRecord
                     $item['product_variant_id'] ?? null,
                 );
 
-                if (filled($variantId)) {
-                    if ($variant) {
-                        $variant->update([
-                            'product_variant_id' => $variantId,
-                            'quantity' => $item['quantity'],
-                            'unit_price' => $item['unit_price'],
-                            'line_total' => $item['line_total'],
-                        ]);
-                    } else {
-                        $purchaseItem->variants()->create([
-                            'product_variant_id' => $variantId,
-                            'quantity' => $item['quantity'],
-                            'unit_price' => $item['unit_price'],
-                            'line_total' => $item['line_total'],
-                        ]);
-                    }
+                if (! filled($variantId)) {
+                    throw ValidationException::withMessages([
+                        'data.items' => 'Unable to resolve a product variant for stock tracking.',
+                    ]);
+                }
+
+                if ($variant) {
+                    $variant->update([
+                        'product_variant_id' => $variantId,
+                        'quantity' => $item['quantity'],
+                        'unit_price' => $item['unit_price'],
+                        'line_total' => $item['line_total'],
+                    ]);
                 } else {
-                    $purchaseItem->variants()->delete();
+                    $purchaseItem->variants()->create([
+                        'product_variant_id' => $variantId,
+                        'quantity' => $item['quantity'],
+                        'unit_price' => $item['unit_price'],
+                        'line_total' => $item['line_total'],
+                    ]);
                 }
             }
 
