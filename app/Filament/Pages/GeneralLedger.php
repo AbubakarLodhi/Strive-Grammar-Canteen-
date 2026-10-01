@@ -6,12 +6,10 @@ use App\Enums\FinanceDocumentStatus;
 use App\Enums\LedgerAccountType;
 use App\Filament\Resources\JournalVouchers\JournalVoucherResource;
 use App\Filament\Resources\Purchases\PurchaseResource;
-use App\Filament\Resources\Vendors\VendorResource;
 use App\Models\JournalVoucher;
 use App\Models\JournalVoucherLine;
 use App\Models\LedgerAccount;
 use App\Models\Purchase;
-use App\Models\Vendor;
 use App\Services\Finance\FinanceLedger;
 use App\Support\FinanceAccess;
 use BackedEnum;
@@ -156,7 +154,6 @@ class GeneralLedger extends Page implements HasTable
             ->sortBy(fn (JournalVoucherLine $line) => ($line->journalVoucher?->voucher_date?->format('Y-m-d') ?? '').$line->created_at);
 
         $purchasesByNo = $this->purchasesByNumberForLines($lines);
-        $vendorsByName = $this->vendorsByNameForLines($lines);
 
         foreach ($lines as $line) {
             $debit = (float) $line->debit;
@@ -177,7 +174,7 @@ class GeneralLedger extends Page implements HasTable
                 'balance' => round($running, 2),
                 'is_opening' => false,
                 'voucher_url' => self::voucherUrl($voucher),
-                'description_url' => self::descriptionUrl($voucher, $description, $purchasesByNo, $vendorsByName),
+                'description_url' => self::descriptionUrl($voucher, $description, $purchasesByNo),
             ]);
         }
 
@@ -221,38 +218,6 @@ class GeneralLedger extends Page implements HasTable
             ->whereIn('purchase_no', $purchaseNos)
             ->get()
             ->keyBy(fn (Purchase $purchase): string => (string) $purchase->purchase_no);
-    }
-
-    /**
-     * @param  Collection<int, JournalVoucherLine>  $lines
-     * @return Collection<string, Vendor>
-     */
-    private function vendorsByNameForLines(Collection $lines): Collection
-    {
-        $merchantId = FinanceAccess::merchantId();
-
-        if (! $merchantId) {
-            return collect();
-        }
-
-        $names = $lines
-            ->map(fn (JournalVoucherLine $line): ?string => self::extractVendorNameFromDescription(
-                self::ledgerLineDescription($line)
-            ))
-            ->filter()
-            ->unique()
-            ->values()
-            ->all();
-
-        if ($names === []) {
-            return collect();
-        }
-
-        return Vendor::query()
-            ->where('merchant_id', $merchantId)
-            ->whereIn('name', $names)
-            ->get()
-            ->keyBy(fn (Vendor $vendor): string => mb_strtolower(trim((string) $vendor->name)));
     }
 
     public static function extractPurchaseNo(?string $text): ?string
@@ -304,13 +269,11 @@ class GeneralLedger extends Page implements HasTable
 
     /**
      * @param  Collection<string, Purchase>  $purchasesByNo
-     * @param  Collection<string, Vendor>  $vendorsByName
      */
     public static function descriptionUrl(
         ?JournalVoucher $voucher,
         string $description,
         Collection $purchasesByNo,
-        Collection $vendorsByName = new Collection,
     ): ?string {
         $purchaseUrl = self::purchaseUrl($voucher, $description, $purchasesByNo);
 
@@ -318,7 +281,7 @@ class GeneralLedger extends Page implements HasTable
             return $purchaseUrl;
         }
 
-        return self::vendorUrl($voucher, $description, $vendorsByName);
+        return self::vendorPaymentPurchasesUrl($voucher, $description);
     }
 
     /**
@@ -354,30 +317,22 @@ class GeneralLedger extends Page implements HasTable
     }
 
     /**
-     * @param  Collection<string, Vendor>  $vendorsByName
+     * Vendor payment lines open the Purchases list (not the vendor resource).
      */
-    public static function vendorUrl(
+    public static function vendorPaymentPurchasesUrl(
         ?JournalVoucher $voucher,
         string $description,
-        Collection $vendorsByName,
     ): ?string {
-        $vendor = $voucher?->vendor;
+        $isVendorPayment = filled($voucher?->vendor_id)
+            || filled(self::extractVendorNameFromDescription($description))
+            || filled(self::extractVendorNameFromDescription($voucher?->narration));
 
-        if (! $vendor) {
-            $name = self::extractVendorNameFromDescription($description)
-                ?? self::extractVendorNameFromDescription($voucher?->narration);
-
-            if (filled($name)) {
-                $vendor = $vendorsByName->get(mb_strtolower(trim($name)));
-            }
-        }
-
-        if (! $vendor) {
+        if (! $isVendorPayment) {
             return null;
         }
 
         try {
-            return VendorResource::getUrl('purchases', ['record' => $vendor]);
+            return PurchaseResource::getUrl('index');
         } catch (Throwable) {
             return null;
         }
