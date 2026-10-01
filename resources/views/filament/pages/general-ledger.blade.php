@@ -67,9 +67,9 @@
                                 @endif
                             </td>
                             <td class="px-4 py-2">
-                                @if (! empty($row->purchase_url) && filled($row->description) && $row->description !== '—')
+                                @if (! empty($row->description_url) && filled($row->description) && $row->description !== '—')
                                     <a
-                                        href="{{ $row->purchase_url }}"
+                                        href="{{ $row->description_url }}"
                                         class="text-primary-600 hover:underline dark:text-primary-400"
                                     >
                                         {{ $row->description }}

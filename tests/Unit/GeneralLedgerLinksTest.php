@@ -22,4 +22,25 @@ class GeneralLedgerLinksTest extends TestCase
 
         $this->assertNull(GeneralLedger::extractPurchaseNo(null));
     }
+
+    public function test_it_extracts_vendor_name_from_payment_description(): void
+    {
+        $this->assertSame(
+            'Mustaqeem Leather House',
+            GeneralLedger::extractVendorNameFromDescription(
+                'Vendor payment — Mustaqeem Leather House — Payment to Mustaqeem Leather House'
+            )
+        );
+
+        $this->assertSame(
+            'Mustaqeem Leather House',
+            GeneralLedger::extractVendorNameFromDescription('Payment to Mustaqeem Leather House')
+        );
+
+        $this->assertNull(
+            GeneralLedger::extractVendorNameFromDescription(
+                'Purchase PUR-20260929-12CD7E — Mustaqeem Leather House'
+            )
+        );
+    }
 }

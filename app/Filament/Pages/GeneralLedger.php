@@ -6,10 +6,12 @@ use App\Enums\FinanceDocumentStatus;
 use App\Enums\LedgerAccountType;
 use App\Filament\Resources\JournalVouchers\JournalVoucherResource;
 use App\Filament\Resources\Purchases\PurchaseResource;
+use App\Filament\Resources\Vendors\VendorResource;
 use App\Models\JournalVoucher;
 use App\Models\JournalVoucherLine;
 use App\Models\LedgerAccount;
 use App\Models\Purchase;
+use App\Models\Vendor;
 use App\Services\Finance\FinanceLedger;
 use App\Support\FinanceAccess;
 use BackedEnum;
@@ -137,7 +139,7 @@ class GeneralLedger extends Page implements HasTable
                 'balance' => round($running, 2),
                 'is_opening' => true,
                 'voucher_url' => null,
-                'purchase_url' => null,
+                'description_url' => null,
             ],
         ]);
 
@@ -149,11 +151,12 @@ class GeneralLedger extends Page implements HasTable
                     ->when($from, fn ($qq) => $qq->whereDate('voucher_date', '>=', $from))
                     ->when($to, fn ($qq) => $qq->whereDate('voucher_date', '<=', $to));
             })
-            ->with(['journalVoucher.source'])
+            ->with(['journalVoucher.source', 'journalVoucher.vendor'])
             ->get()
             ->sortBy(fn (JournalVoucherLine $line) => ($line->journalVoucher?->voucher_date?->format('Y-m-d') ?? '').$line->created_at);
 
         $purchasesByNo = $this->purchasesByNumberForLines($lines);
+        $vendorsByName = $this->vendorsByNameForLines($lines);
 
         foreach ($lines as $line) {
             $debit = (float) $line->debit;
@@ -174,7 +177,7 @@ class GeneralLedger extends Page implements HasTable
                 'balance' => round($running, 2),
                 'is_opening' => false,
                 'voucher_url' => self::voucherUrl($voucher),
-                'purchase_url' => self::purchaseUrl($voucher, $description, $purchasesByNo),
+                'description_url' => self::descriptionUrl($voucher, $description, $purchasesByNo, $vendorsByName),
             ]);
         }
 
@@ -220,6 +223,38 @@ class GeneralLedger extends Page implements HasTable
             ->keyBy(fn (Purchase $purchase): string => (string) $purchase->purchase_no);
     }
 
+    /**
+     * @param  Collection<int, JournalVoucherLine>  $lines
+     * @return Collection<string, Vendor>
+     */
+    private function vendorsByNameForLines(Collection $lines): Collection
+    {
+        $merchantId = FinanceAccess::merchantId();
+
+        if (! $merchantId) {
+            return collect();
+        }
+
+        $names = $lines
+            ->map(fn (JournalVoucherLine $line): ?string => self::extractVendorNameFromDescription(
+                self::ledgerLineDescription($line)
+            ))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($names === []) {
+            return collect();
+        }
+
+        return Vendor::query()
+            ->where('merchant_id', $merchantId)
+            ->whereIn('name', $names)
+            ->get()
+            ->keyBy(fn (Vendor $vendor): string => mb_strtolower(trim((string) $vendor->name)));
+    }
+
     public static function extractPurchaseNo(?string $text): ?string
     {
         if (! filled($text)) {
@@ -233,6 +268,27 @@ class GeneralLedger extends Page implements HasTable
         return $matches[1];
     }
 
+    public static function extractVendorNameFromDescription(?string $text): ?string
+    {
+        if (! filled($text)) {
+            return null;
+        }
+
+        if (preg_match('/^Vendor payment\s+[—\-]\s+(.+?)(?:\s+[—\-]\s+|$)/u', $text, $matches) === 1) {
+            $name = trim($matches[1]);
+
+            return $name !== '' ? $name : null;
+        }
+
+        if (preg_match('/Payment to\s+(.+)$/u', $text, $matches) === 1) {
+            $name = trim($matches[1]);
+
+            return $name !== '' ? $name : null;
+        }
+
+        return null;
+    }
+
     public static function voucherUrl(?JournalVoucher $voucher): ?string
     {
         if (! $voucher) {
@@ -244,6 +300,25 @@ class GeneralLedger extends Page implements HasTable
         } catch (Throwable) {
             return null;
         }
+    }
+
+    /**
+     * @param  Collection<string, Purchase>  $purchasesByNo
+     * @param  Collection<string, Vendor>  $vendorsByName
+     */
+    public static function descriptionUrl(
+        ?JournalVoucher $voucher,
+        string $description,
+        Collection $purchasesByNo,
+        Collection $vendorsByName = new Collection,
+    ): ?string {
+        $purchaseUrl = self::purchaseUrl($voucher, $description, $purchasesByNo);
+
+        if (filled($purchaseUrl)) {
+            return $purchaseUrl;
+        }
+
+        return self::vendorUrl($voucher, $description, $vendorsByName);
     }
 
     /**
@@ -273,6 +348,36 @@ class GeneralLedger extends Page implements HasTable
 
         try {
             return PurchaseResource::getUrl('view', ['record' => $purchase]);
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * @param  Collection<string, Vendor>  $vendorsByName
+     */
+    public static function vendorUrl(
+        ?JournalVoucher $voucher,
+        string $description,
+        Collection $vendorsByName,
+    ): ?string {
+        $vendor = $voucher?->vendor;
+
+        if (! $vendor) {
+            $name = self::extractVendorNameFromDescription($description)
+                ?? self::extractVendorNameFromDescription($voucher?->narration);
+
+            if (filled($name)) {
+                $vendor = $vendorsByName->get(mb_strtolower(trim($name)));
+            }
+        }
+
+        if (! $vendor) {
+            return null;
+        }
+
+        try {
+            return VendorResource::getUrl('purchases', ['record' => $vendor]);
         } catch (Throwable) {
             return null;
         }
