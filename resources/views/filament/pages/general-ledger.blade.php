@@ -54,8 +54,30 @@
                             'bg-gray-50 font-medium dark:bg-gray-800/50' => $row->is_opening,
                         ])>
                             <td class="px-4 py-2">{{ optional($row->date)->format('d/m/Y') }}</td>
-                            <td class="px-4 py-2">{{ $row->voucher_no }}</td>
-                            <td class="px-4 py-2">{{ $row->description }}</td>
+                            <td class="px-4 py-2">
+                                @if (! empty($row->voucher_url) && filled($row->voucher_no) && $row->voucher_no !== '—')
+                                    <a
+                                        href="{{ $row->voucher_url }}"
+                                        class="font-medium text-primary-600 hover:underline dark:text-primary-400"
+                                    >
+                                        {{ $row->voucher_no }}
+                                    </a>
+                                @else
+                                    {{ $row->voucher_no }}
+                                @endif
+                            </td>
+                            <td class="px-4 py-2">
+                                @if (! empty($row->purchase_url) && filled($row->description) && $row->description !== '—')
+                                    <a
+                                        href="{{ $row->purchase_url }}"
+                                        class="text-primary-600 hover:underline dark:text-primary-400"
+                                    >
+                                        {{ $row->description }}
+                                    </a>
+                                @else
+                                    {{ $row->description }}
+                                @endif
+                            </td>
                             <td class="px-4 py-2 text-right">{{ $row->is_opening ? '—' : number_format($row->debit, 2) }}</td>
                             <td class="px-4 py-2 text-right">{{ $row->is_opening ? '—' : number_format($row->credit, 2) }}</td>
                             <td class="px-4 py-2 text-right font-medium">{{ number_format($row->balance, 2) }}</td>

@@ -4,8 +4,12 @@ namespace App\Filament\Pages;
 
 use App\Enums\FinanceDocumentStatus;
 use App\Enums\LedgerAccountType;
+use App\Filament\Resources\JournalVouchers\JournalVoucherResource;
+use App\Filament\Resources\Purchases\PurchaseResource;
+use App\Models\JournalVoucher;
 use App\Models\JournalVoucherLine;
 use App\Models\LedgerAccount;
+use App\Models\Purchase;
 use App\Services\Finance\FinanceLedger;
 use App\Support\FinanceAccess;
 use BackedEnum;
@@ -19,6 +23,7 @@ use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Throwable;
 
 class GeneralLedger extends Page implements HasTable
 {
@@ -131,6 +136,8 @@ class GeneralLedger extends Page implements HasTable
                 'credit' => 0.0,
                 'balance' => round($running, 2),
                 'is_opening' => true,
+                'voucher_url' => null,
+                'purchase_url' => null,
             ],
         ]);
 
@@ -142,9 +149,11 @@ class GeneralLedger extends Page implements HasTable
                     ->when($from, fn ($qq) => $qq->whereDate('voucher_date', '>=', $from))
                     ->when($to, fn ($qq) => $qq->whereDate('voucher_date', '<=', $to));
             })
-            ->with('journalVoucher')
+            ->with(['journalVoucher.source'])
             ->get()
             ->sortBy(fn (JournalVoucherLine $line) => ($line->journalVoucher?->voucher_date?->format('Y-m-d') ?? '').$line->created_at);
+
+        $purchasesByNo = $this->purchasesByNumberForLines($lines);
 
         foreach ($lines as $line) {
             $debit = (float) $line->debit;
@@ -153,18 +162,120 @@ class GeneralLedger extends Page implements HasTable
                 ? $running + $debit - $credit
                 : $running + $credit - $debit;
 
+            $description = self::ledgerLineDescription($line);
+            $voucher = $line->journalVoucher;
+
             $rows->push((object) [
-                'date' => $line->journalVoucher?->voucher_date,
-                'voucher_no' => $line->journalVoucher?->voucher_no,
-                'description' => self::ledgerLineDescription($line),
+                'date' => $voucher?->voucher_date,
+                'voucher_no' => $voucher?->voucher_no,
+                'description' => $description,
                 'debit' => $debit,
                 'credit' => $credit,
                 'balance' => round($running, 2),
                 'is_opening' => false,
+                'voucher_url' => self::voucherUrl($voucher),
+                'purchase_url' => self::purchaseUrl($voucher, $description, $purchasesByNo),
             ]);
         }
 
         return $rows->values();
+    }
+
+    /**
+     * @param  Collection<int, JournalVoucherLine>  $lines
+     * @return Collection<string, Purchase>
+     */
+    private function purchasesByNumberForLines(Collection $lines): Collection
+    {
+        $merchantId = FinanceAccess::merchantId();
+
+        if (! $merchantId) {
+            return collect();
+        }
+
+        $purchaseNos = $lines
+            ->map(function (JournalVoucherLine $line): ?string {
+                $voucher = $line->journalVoucher;
+
+                if ($voucher?->source instanceof Purchase) {
+                    return (string) $voucher->source->purchase_no;
+                }
+
+                return self::extractPurchaseNo(self::ledgerLineDescription($line))
+                    ?? self::extractPurchaseNo($voucher?->narration);
+            })
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($purchaseNos === []) {
+            return collect();
+        }
+
+        return Purchase::query()
+            ->where('merchant_id', $merchantId)
+            ->whereIn('purchase_no', $purchaseNos)
+            ->get()
+            ->keyBy(fn (Purchase $purchase): string => (string) $purchase->purchase_no);
+    }
+
+    public static function extractPurchaseNo(?string $text): ?string
+    {
+        if (! filled($text)) {
+            return null;
+        }
+
+        if (preg_match('/\b(PUR-[A-Z0-9-]+)\b/i', $text, $matches) !== 1) {
+            return null;
+        }
+
+        return $matches[1];
+    }
+
+    public static function voucherUrl(?JournalVoucher $voucher): ?string
+    {
+        if (! $voucher) {
+            return null;
+        }
+
+        try {
+            return JournalVoucherResource::getUrl('view', ['record' => $voucher]);
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * @param  Collection<string, Purchase>  $purchasesByNo
+     */
+    public static function purchaseUrl(
+        ?JournalVoucher $voucher,
+        string $description,
+        Collection $purchasesByNo,
+    ): ?string {
+        $purchase = null;
+
+        if ($voucher?->source instanceof Purchase) {
+            $purchase = $voucher->source;
+        } else {
+            $purchaseNo = self::extractPurchaseNo($description)
+                ?? self::extractPurchaseNo($voucher?->narration);
+
+            if (filled($purchaseNo)) {
+                $purchase = $purchasesByNo->get($purchaseNo);
+            }
+        }
+
+        if (! $purchase) {
+            return null;
+        }
+
+        try {
+            return PurchaseResource::getUrl('view', ['record' => $purchase]);
+        } catch (Throwable) {
+            return null;
+        }
     }
 
     private static function ledgerLineDescription(JournalVoucherLine $line): string
