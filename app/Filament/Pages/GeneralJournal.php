@@ -49,7 +49,7 @@ class GeneralJournal extends Page implements HasForms
     public function mount(): void
     {
         $this->form->fill([
-            'date_from' => now()->startOfMonth()->toDateString(),
+            'date_from' => now()->startOfMonth()->subMonths(5)->toDateString(),
             'date_to' => now()->toDateString(),
         ]);
     }

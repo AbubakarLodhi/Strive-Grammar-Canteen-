@@ -152,6 +152,65 @@ class PurchaseStockAndSaleReturnFixTest extends TestCase
         );
     }
 
+    public function test_vendor_purchase_does_not_auto_create_journal_voucher(): void
+    {
+        [$merchant, $branch, $variant] = $this->seedStockedProduct(quantity: 0);
+        [$country, $city] = $this->createGeo();
+
+        $vendor = Vendor::query()->create([
+            'id' => Str::uuid()->toString(),
+            'merchant_id' => $merchant->id,
+            'name' => 'Paper House',
+            'email' => Str::uuid().'@example.com',
+            'country_id' => $country->id,
+            'city_id' => $city->id,
+        ]);
+
+        $purchase = Purchase::query()->create([
+            'id' => Str::uuid()->toString(),
+            'merchant_id' => $merchant->id,
+            'vendor_id' => $vendor->id,
+            'purchase_no' => 'PUR-JV-1',
+            'purchase_date' => now()->toDateString(),
+            'subtotal' => 500,
+            'total_amount' => 500,
+            'paid_amount' => 0,
+            'due_amount' => 500,
+            'payment_type' => 'credit',
+        ]);
+
+        PurchaseItem::query()->create([
+            'id' => Str::uuid()->toString(),
+            'purchase_id' => $purchase->id,
+            'business_id' => $branch->business_id,
+            'branch_id' => $branch->id,
+            'product_id' => $variant->product_id,
+            'quantity' => 5,
+            'unit_price' => 100,
+            'line_total' => 500,
+            'discount' => 0,
+            'tax' => 0,
+        ])->variants()->create([
+            'product_variant_id' => $variant->id,
+            'quantity' => 5,
+            'unit_price' => 100,
+            'line_total' => 500,
+        ]);
+
+        $this->assertFalse(
+            JournalVoucher::query()
+                ->where('source_type', Purchase::class)
+                ->where('source_id', $purchase->id)
+                ->exists()
+        );
+
+        $create = file_get_contents(app_path('Filament/Resources/Purchases/Pages/CreatePurchase.php'));
+        $edit = file_get_contents(app_path('Filament/Resources/Purchases/Pages/EditPurchase.php'));
+
+        $this->assertStringNotContainsString('syncPurchase(', $create);
+        $this->assertStringNotContainsString('syncPurchase(', $edit);
+    }
+
     /**
      * @return array{0: Merchant, 1: Branch, 2: ProductVariant}
      */

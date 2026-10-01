@@ -48,7 +48,7 @@ class GeneralLedger extends Page implements HasTable
 
     public function mount(): void
     {
-        $this->dateFrom = now()->startOfMonth()->toDateString();
+        $this->dateFrom = now()->startOfMonth()->subMonths(5)->toDateString();
         $this->dateTo = now()->toDateString();
     }
 
@@ -149,7 +149,7 @@ class GeneralLedger extends Page implements HasTable
             $rows->push((object) [
                 'date' => $line->journalVoucher?->voucher_date,
                 'voucher_no' => $line->journalVoucher?->voucher_no,
-                'description' => $line->description,
+                'description' => self::ledgerLineDescription($line),
                 'debit' => $debit,
                 'credit' => $credit,
                 'balance' => round($running, 2),
@@ -158,6 +158,18 @@ class GeneralLedger extends Page implements HasTable
         }
 
         return $rows->values();
+    }
+
+    private static function ledgerLineDescription(JournalVoucherLine $line): string
+    {
+        $narration = trim((string) ($line->journalVoucher?->narration ?? ''));
+        $description = trim((string) ($line->description ?? ''));
+
+        if ($narration !== '' && $description !== '' && ! str_contains($description, $narration)) {
+            return $narration.' — '.$description;
+        }
+
+        return $description !== '' ? $description : ($narration !== '' ? $narration : '—');
     }
 
     public function table(Table $table): Table

@@ -55,7 +55,10 @@ class JournalVoucherResource extends Resource
 
     public static function getEloquentQuery(): Builder
     {
+        // Journal Vouchers lists only manually created vouchers. Operational
+        // sales/purchases post to the ledger separately (or via a manual JV).
         return FinanceAccess::scopeMerchant(parent::getEloquentQuery())
+            ->whereNull('source_type')
             ->with(['lines.ledgerAccount', 'vendor', 'source']);
     }
 

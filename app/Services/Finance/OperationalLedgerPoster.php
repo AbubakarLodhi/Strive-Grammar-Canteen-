@@ -59,6 +59,7 @@ class OperationalLedgerPoster
         bool $paidFromBank = false,
         ?string $vendorName = null,
         string $payableCode = '2000',
+        ?string $purchaseNo = null,
     ): array {
         $total = round(max(0, $total), 2);
         $paid = round(max(0, $paid), 2);
@@ -69,12 +70,13 @@ class OperationalLedgerPoster
             $paid = round(max(0, $total - $due), 2);
         }
 
+        $purchaseLabel = filled($purchaseNo) ? 'Purchase '.$purchaseNo : 'Purchase';
         $vendorSuffix = filled($vendorName) ? ' — '.$vendorName : '';
 
         return $this->compactLines([
-            ['code' => FinanceLedger::INVENTORY_ACCOUNT_CODE, 'debit' => $total, 'credit' => 0, 'description' => 'Inventory'.$vendorSuffix],
-            ['code' => $paidFromBank ? '1010' : '1000', 'debit' => 0, 'credit' => $paid, 'description' => 'Amount paid'.$vendorSuffix],
-            ['code' => $payableCode, 'debit' => 0, 'credit' => $due, 'description' => 'Amount payable'.$vendorSuffix],
+            ['code' => FinanceLedger::INVENTORY_ACCOUNT_CODE, 'debit' => $total, 'credit' => 0, 'description' => $purchaseLabel.' inventory'.$vendorSuffix],
+            ['code' => $paidFromBank ? '1010' : '1000', 'debit' => 0, 'credit' => $paid, 'description' => $purchaseLabel.' amount paid'.$vendorSuffix],
+            ['code' => $payableCode, 'debit' => 0, 'credit' => $due, 'description' => $purchaseLabel.' amount payable'.$vendorSuffix],
         ]);
     }
 
@@ -270,6 +272,7 @@ class OperationalLedgerPoster
                 $this->documentUsesBank($purchase),
                 $vendorName,
                 $payableCode,
+                $purchase->purchase_no,
             ),
             $purchase->created_by,
             $purchase->vendor_id,

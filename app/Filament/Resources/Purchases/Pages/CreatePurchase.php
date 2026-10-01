@@ -7,7 +7,6 @@ use App\Enums\AttachmentType;
 use App\Filament\Resources\Purchases\PurchaseResource;
 use App\Models\Branch;
 use App\Models\Merchant;
-use App\Services\Finance\OperationalLedgerPoster;
 use App\Services\Notifications\NotificationDispatcher;
 use App\Services\PaymentLedgerService;
 use App\Support\ProductStockAvailability;
@@ -43,8 +42,6 @@ class CreatePurchase extends CreateRecord
                 'error' => $exception->getMessage(),
             ]);
         }
-
-        app(OperationalLedgerPoster::class)->syncPurchase($purchase);
     }
 
     protected function handleRecordCreation(array $data): Model

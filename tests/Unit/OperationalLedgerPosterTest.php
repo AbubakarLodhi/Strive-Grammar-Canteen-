@@ -46,8 +46,8 @@ class OperationalLedgerPosterTest extends TestCase
         $lines = $this->poster()->purchaseLinePlan(800, 800, 0);
 
         $this->assertSame([
-            ['code' => '1400', 'debit' => 800.0, 'credit' => 0, 'description' => 'Inventory'],
-            ['code' => '1000', 'debit' => 0, 'credit' => 800.0, 'description' => 'Amount paid'],
+            ['code' => '1400', 'debit' => 800.0, 'credit' => 0, 'description' => 'Purchase inventory'],
+            ['code' => '1000', 'debit' => 0, 'credit' => 800.0, 'description' => 'Purchase amount paid'],
         ], $lines);
 
         $this->assertPlanBalances($lines);
@@ -55,12 +55,12 @@ class OperationalLedgerPosterTest extends TestCase
 
     public function test_purchase_line_descriptions_include_the_vendor_name(): void
     {
-        $lines = $this->poster()->purchaseLinePlan(1000, 400, 600, false, 'Paper House', '2001');
+        $lines = $this->poster()->purchaseLinePlan(1000, 400, 600, false, 'Paper House', '2001', 'PUR-1001');
 
         $this->assertSame([
-            ['code' => '1400', 'debit' => 1000.0, 'credit' => 0, 'description' => 'Inventory — Paper House'],
-            ['code' => '1000', 'debit' => 0, 'credit' => 400.0, 'description' => 'Amount paid — Paper House'],
-            ['code' => '2001', 'debit' => 0, 'credit' => 600.0, 'description' => 'Amount payable — Paper House'],
+            ['code' => '1400', 'debit' => 1000.0, 'credit' => 0, 'description' => 'Purchase PUR-1001 inventory — Paper House'],
+            ['code' => '1000', 'debit' => 0, 'credit' => 400.0, 'description' => 'Purchase PUR-1001 amount paid — Paper House'],
+            ['code' => '2001', 'debit' => 0, 'credit' => 600.0, 'description' => 'Purchase PUR-1001 amount payable — Paper House'],
         ], $lines);
 
         $this->assertPlanBalances($lines);

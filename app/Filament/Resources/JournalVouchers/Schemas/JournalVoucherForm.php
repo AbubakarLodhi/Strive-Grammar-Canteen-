@@ -5,8 +5,11 @@ namespace App\Filament\Resources\JournalVouchers\Schemas;
 use App\Filament\Resources\Vendors\VendorResource;
 use App\Models\JournalVoucher;
 use App\Models\LedgerAccount;
+use App\Models\Purchase;
 use App\Models\Vendor;
 use App\Services\Finance\FinanceLedger;
+use App\Services\Finance\OperationalLedgerPoster;
+use App\Services\Inventory\CanteenStockImporter;
 use App\Support\FinanceAccess;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\DatePicker;
@@ -60,6 +63,22 @@ class JournalVoucherForm
                         ->label('Narration')
                         ->rows(2)
                         ->columnSpanFull(),
+                ]),
+
+            Section::make('From Purchase')
+                ->description('Optional. Select a purchase to auto-fill Inventory and vendor payable / cash lines. The voucher is saved as a manual journal entry.')
+                ->columns(1)
+                ->columnSpanFull()
+                ->schema([
+                    Select::make('purchase_id')
+                        ->label('Purchase')
+                        ->searchable()
+                        ->preload()
+                        ->nullable()
+                        ->dehydrated(false)
+                        ->options(fn (): array => self::purchaseOptions())
+                        ->live()
+                        ->afterStateUpdated(fn (Get $get, Set $set) => self::applyPurchaseLines($get, $set)),
                 ]),
 
             Section::make('Vendor Payment')
@@ -135,6 +154,77 @@ class JournalVoucherForm
         ]);
     }
 
+    private static function applyPurchaseLines(Get $get, Set $set): void
+    {
+        $purchaseId = $get('purchase_id');
+
+        if (blank($purchaseId)) {
+            return;
+        }
+
+        $merchantId = FinanceAccess::merchantId();
+
+        if (! $merchantId) {
+            return;
+        }
+
+        $purchase = Purchase::query()
+            ->with(['vendor', 'payments'])
+            ->where('merchant_id', $merchantId)
+            ->whereKey($purchaseId)
+            ->first();
+
+        if (! $purchase || CanteenStockImporter::isOpeningStockPurchase($purchase)) {
+            return;
+        }
+
+        $ledger = app(FinanceLedger::class);
+        $poster = app(OperationalLedgerPoster::class);
+        $vendorName = trim((string) ($purchase->vendor?->name ?? ''));
+        $payableCode = '2000';
+
+        if ($purchase->vendor) {
+            $payableCode = $ledger->ensureVendorPayableAccount($purchase->vendor)->code;
+            $set('vendor_id', $purchase->vendor_id);
+        }
+
+        $plan = $poster->purchaseLinePlan(
+            (float) $purchase->total_amount,
+            (float) $purchase->paid_amount,
+            (float) $purchase->due_amount,
+            $poster->isBankMethod(
+                (string) $purchase->payments->pluck('method')->filter()->implode(' ')
+            ),
+            $vendorName !== '' ? $vendorName : null,
+            $payableCode,
+            $purchase->purchase_no,
+        );
+
+        $lines = [];
+
+        foreach ($plan as $line) {
+            $account = $ledger->accountByCode($merchantId, $line['code']);
+            $lines[] = [
+                'ledger_account_id' => $account->id,
+                'description' => $line['description'],
+                'debit' => $line['debit'],
+                'credit' => $line['credit'],
+            ];
+        }
+
+        if ($lines === []) {
+            return;
+        }
+
+        $set('lines', $lines);
+        $set('voucher_date', optional($purchase->purchase_date)?->toDateString() ?? now()->toDateString());
+        $set(
+            'narration',
+            'Purchase '.$purchase->purchase_no.($vendorName !== '' ? ' — '.$vendorName : '')
+        );
+        $set('payment_amount', null);
+    }
+
     private static function applyVendorPaymentLines(Get $get, Set $set): void
     {
         $amount = round((float) ($get('payment_amount') ?? 0), 2);
@@ -165,6 +255,7 @@ class JournalVoucherForm
 
         $vendorName = trim((string) $vendor->name) !== '' ? $vendor->name : 'Vendor';
 
+        $set('purchase_id', null);
         $set('lines', [
             [
                 'ledger_account_id' => $payable->id,
@@ -180,9 +271,38 @@ class JournalVoucherForm
             ],
         ]);
 
-        if (blank($get('narration'))) {
+        if (blank($get('narration')) || str_starts_with((string) $get('narration'), 'Purchase ')) {
             $set('narration', "Vendor payment — {$vendorName}");
         }
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private static function purchaseOptions(): array
+    {
+        $merchantId = FinanceAccess::merchantId();
+
+        if (! $merchantId) {
+            return [];
+        }
+
+        return Purchase::query()
+            ->with('vendor')
+            ->where('merchant_id', $merchantId)
+            ->where('purchase_no', '!=', CanteenStockImporter::OPENING_PURCHASE_NO)
+            ->orderByDesc('purchase_date')
+            ->limit(200)
+            ->get()
+            ->mapWithKeys(function (Purchase $purchase): array {
+                $vendor = $purchase->vendor?->name ?: 'No vendor';
+                $amount = number_format((float) $purchase->total_amount, 2);
+
+                return [
+                    $purchase->id => "{$purchase->purchase_no} — {$vendor} (PKR {$amount})",
+                ];
+            })
+            ->all();
     }
 
     /**
@@ -215,7 +335,7 @@ class JournalVoucherForm
             ->orderBy('name')
             ->get()
             ->mapWithKeys(fn (LedgerAccount $account): array => [
-                $account->id => $account->name,
+                $account->id => $account->code.' — '.$account->name,
             ])
             ->all();
     }
