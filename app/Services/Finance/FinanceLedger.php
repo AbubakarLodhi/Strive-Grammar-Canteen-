@@ -314,6 +314,43 @@ class FinanceLedger
     }
 
     /**
+     * Remove empty manual party accounts that duplicate a vendor-linked payable by name.
+     * Example: a hand-created "City Uniform" (code 600x) beside the real vendor party (200x).
+     */
+    public function purgeOrphanDuplicatePartyAccounts(string $merchantId): int
+    {
+        $canonicalNames = LedgerAccount::query()
+            ->where('merchant_id', $merchantId)
+            ->whereNotNull('vendor_id')
+            ->pluck('name')
+            ->map(fn (string $name): string => mb_strtolower(trim($name)))
+            ->filter()
+            ->unique()
+            ->all();
+
+        if ($canonicalNames === []) {
+            return 0;
+        }
+
+        $orphans = LedgerAccount::query()
+            ->where('merchant_id', $merchantId)
+            ->whereNull('vendor_id')
+            ->where('type', LedgerAccountType::Liability)
+            ->where('is_system', false)
+            ->whereDoesntHave('journalLines')
+            ->get()
+            ->filter(function (LedgerAccount $account) use ($canonicalNames): bool {
+                $name = mb_strtolower(trim((string) $account->name));
+
+                return $name !== '' && in_array($name, $canonicalNames, true);
+            });
+
+        $orphans->each(fn (LedgerAccount $account) => $account->delete());
+
+        return $orphans->count();
+    }
+
+    /**
      * Create missing vendor payable accounts and re-post purchases for newly created parties.
      */
     public function backfillVendorPayableAccounts(string $merchantId): void
@@ -331,6 +368,7 @@ class FinanceLedger
             ->pluck('vendor_id');
 
         $this->ensureAllVendorPayableAccounts($merchantId);
+        $this->purgeOrphanDuplicatePartyAccounts($merchantId);
 
         if ($vendorIds->isEmpty()) {
             return;
@@ -518,6 +556,73 @@ class FinanceLedger
     public function nextVoucherNo(string $merchantId, mixed $date = null): string
     {
         return $this->nextDocumentNo($merchantId, 'JV', JournalVoucher::class, 'voucher_no', $date);
+    }
+
+    /**
+     * Find an existing journal voucher already recording this purchase (linked source or narration).
+     */
+    public function findVoucherForPurchase(Purchase $purchase): ?JournalVoucher
+    {
+        $linked = JournalVoucher::query()
+            ->where('merchant_id', $purchase->merchant_id)
+            ->where('source_type', $purchase->getMorphClass())
+            ->where('source_id', $purchase->getKey())
+            ->first();
+
+        if ($linked) {
+            return $linked;
+        }
+
+        $purchaseNo = trim((string) $purchase->purchase_no);
+
+        if ($purchaseNo === '') {
+            return null;
+        }
+
+        return JournalVoucher::query()
+            ->where('merchant_id', $purchase->merchant_id)
+            ->where('narration', 'like', 'Purchase '.$purchaseNo.'%')
+            ->orderBy('created_at')
+            ->first();
+    }
+
+    /**
+     * @return array{ids: list<string>, numbers: list<string>}
+     */
+    public function purchaseKeysAlreadyJournaled(string $merchantId): array
+    {
+        $linkedIds = JournalVoucher::query()
+            ->where('merchant_id', $merchantId)
+            ->where('source_type', (new Purchase)->getMorphClass())
+            ->whereNotNull('source_id')
+            ->pluck('source_id')
+            ->map(fn ($id): string => (string) $id)
+            ->all();
+
+        $numbers = JournalVoucher::query()
+            ->where('merchant_id', $merchantId)
+            ->where('narration', 'like', 'Purchase %')
+            ->pluck('narration')
+            ->map(function (mixed $narration): ?string {
+                if (! is_string($narration)) {
+                    return null;
+                }
+
+                if (preg_match('/^Purchase\s+(\S+)/', $narration, $matches) !== 1) {
+                    return null;
+                }
+
+                return $matches[1];
+            })
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        return [
+            'ids' => array_values(array_unique($linkedIds)),
+            'numbers' => $numbers,
+        ];
     }
 
     public function nextDepositNo(string $merchantId, mixed $date = null): string

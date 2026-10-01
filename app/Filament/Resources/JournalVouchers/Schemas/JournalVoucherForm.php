@@ -18,6 +18,7 @@ use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
+use Filament\Notifications\Notification;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Components\Utilities\Set;
@@ -66,7 +67,7 @@ class JournalVoucherForm
                 ]),
 
             Section::make('From Purchase')
-                ->description('Optional. Select a purchase to auto-fill Inventory and vendor payable / cash lines. The voucher is saved as a manual journal entry.')
+                ->description('Optional. Select a purchase to auto-fill Inventory and vendor payable / cash lines. Purchases that already have a journal voucher are hidden so the same purchase is not posted twice.')
                 ->columns(1)
                 ->columnSpanFull()
                 ->schema([
@@ -75,7 +76,7 @@ class JournalVoucherForm
                         ->searchable()
                         ->preload()
                         ->nullable()
-                        ->dehydrated(false)
+                        ->dehydrated()
                         ->options(fn (): array => self::purchaseOptions())
                         ->live()
                         ->afterStateUpdated(fn (Get $get, Set $set) => self::applyPurchaseLines($get, $set)),
@@ -175,6 +176,22 @@ class JournalVoucherForm
             ->first();
 
         if (! $purchase || CanteenStockImporter::isOpeningStockPurchase($purchase)) {
+            return;
+        }
+
+        $existing = app(FinanceLedger::class)->findVoucherForPurchase($purchase);
+
+        if ($existing) {
+            $set('purchase_id', null);
+            $set('lines', []);
+            $set('payment_amount', null);
+
+            Notification::make()
+                ->title('Purchase already journaled')
+                ->body("{$purchase->purchase_no} already has voucher {$existing->voucher_no}. Creating another would double the amount in the General Ledger.")
+                ->warning()
+                ->send();
+
             return;
         }
 
@@ -287,6 +304,8 @@ class JournalVoucherForm
             return [];
         }
 
+        $already = app(FinanceLedger::class)->purchaseKeysAlreadyJournaled($merchantId);
+
         return Purchase::query()
             ->with('vendor')
             ->where('merchant_id', $merchantId)
@@ -294,6 +313,10 @@ class JournalVoucherForm
             ->orderByDesc('purchase_date')
             ->limit(200)
             ->get()
+            ->reject(function (Purchase $purchase) use ($already): bool {
+                return in_array((string) $purchase->id, $already['ids'], true)
+                    || in_array((string) $purchase->purchase_no, $already['numbers'], true);
+            })
             ->mapWithKeys(function (Purchase $purchase): array {
                 $vendor = $purchase->vendor?->name ?: 'No vendor';
                 $amount = number_format((float) $purchase->total_amount, 2);

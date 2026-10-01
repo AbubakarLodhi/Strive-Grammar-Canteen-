@@ -6,6 +6,7 @@ use App\Enums\FinanceDocumentStatus;
 use App\Enums\LedgerAccountType;
 use App\Models\JournalVoucherLine;
 use App\Models\LedgerAccount;
+use App\Services\Finance\FinanceLedger;
 use App\Support\FinanceAccess;
 use BackedEnum;
 use Filament\Actions\Action;
@@ -50,6 +51,12 @@ class GeneralLedger extends Page implements HasTable
     {
         $this->dateFrom = now()->startOfMonth()->subMonths(5)->toDateString();
         $this->dateTo = now()->toDateString();
+
+        $merchantId = FinanceAccess::merchantId();
+
+        if ($merchantId) {
+            app(FinanceLedger::class)->purgeOrphanDuplicatePartyAccounts($merchantId);
+        }
     }
 
     public function openAccount(string $accountId): void
@@ -196,6 +203,15 @@ class GeneralLedger extends Page implements HasTable
                     ->label('Account')
                     ->searchable()
                     ->sortable()
+                    ->formatStateUsing(function (LedgerAccount $record): string {
+                        $label = (string) $record->name;
+
+                        if ($record->isVendorPayable()) {
+                            return $label.' · Vendor party';
+                        }
+
+                        return $label;
+                    })
                     ->color('primary')
                     ->weight('medium')
                     ->action(

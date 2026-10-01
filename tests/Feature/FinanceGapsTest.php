@@ -15,6 +15,7 @@ use App\Models\JournalVoucherLine;
 use App\Models\LedgerAccount;
 use App\Models\Merchant;
 use App\Models\OnlineBankTransfer;
+use App\Models\Purchase;
 use App\Models\Sale;
 use App\Services\Finance\FinanceLedger;
 use App\Services\Finance\FinancialStatements;
@@ -178,6 +179,58 @@ class FinanceGapsTest extends TestCase
             ->count();
 
         $this->assertSame(1, $glLineCount);
+    }
+
+    public function test_find_voucher_for_purchase_detects_existing_narration(): void
+    {
+        [$merchant, $cash, $counter] = $this->seedMerchantAccounts();
+
+        $jv = JournalVoucher::query()->create([
+            'id' => Str::uuid()->toString(),
+            'merchant_id' => $merchant->id,
+            'voucher_no' => 'JV-20261001-0008',
+            'voucher_date' => now()->toDateString(),
+            'narration' => 'Purchase PUR-20261001-49F667 — Afsar Socks Lahore',
+            'status' => FinanceDocumentStatus::Posted,
+            'posted_at' => now(),
+        ]);
+
+        $jv->lines()->createMany([
+            [
+                'ledger_account_id' => $cash->id,
+                'description' => 'Debit',
+                'debit' => 750,
+                'credit' => 0,
+                'sort_order' => 1,
+            ],
+            [
+                'ledger_account_id' => $counter->id,
+                'description' => 'Credit',
+                'debit' => 0,
+                'credit' => 750,
+                'sort_order' => 2,
+            ],
+        ]);
+
+        $purchase = Purchase::query()->create([
+            'id' => Str::uuid()->toString(),
+            'merchant_id' => $merchant->id,
+            'purchase_no' => 'PUR-20261001-49F667',
+            'purchase_date' => now()->toDateString(),
+            'subtotal' => 750,
+            'total_amount' => 750,
+            'paid_amount' => 0,
+            'due_amount' => 750,
+            'payment_type' => 'credit',
+        ]);
+
+        $found = app(FinanceLedger::class)->findVoucherForPurchase($purchase);
+
+        $this->assertNotNull($found);
+        $this->assertSame($jv->id, $found->id);
+
+        $keys = app(FinanceLedger::class)->purchaseKeysAlreadyJournaled($merchant->id);
+        $this->assertContains('PUR-20261001-49F667', $keys['numbers']);
     }
 
     public function test_create_journal_voucher_page_posts_on_save(): void

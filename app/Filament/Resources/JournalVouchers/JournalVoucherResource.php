@@ -10,6 +10,7 @@ use App\Filament\Resources\JournalVouchers\Schemas\JournalVoucherForm;
 use App\Filament\Resources\JournalVouchers\Schemas\JournalVoucherInfolist;
 use App\Filament\Resources\JournalVouchers\Tables\JournalVouchersTable;
 use App\Models\JournalVoucher;
+use App\Models\Purchase;
 use App\Support\FinanceAccess;
 use BackedEnum;
 use Filament\Resources\Resource;
@@ -55,10 +56,15 @@ class JournalVoucherResource extends Resource
 
     public static function getEloquentQuery(): Builder
     {
-        // Journal Vouchers lists only manually created vouchers. Operational
-        // sales/purchases post to the ledger separately (or via a manual JV).
+        // Manual vouchers plus purchase-backed vouchers created from the
+        // "From Purchase" helper. Auto sale vouchers stay out of this list.
+        $purchaseMorph = (new Purchase)->getMorphClass();
+
         return FinanceAccess::scopeMerchant(parent::getEloquentQuery())
-            ->whereNull('source_type')
+            ->where(function (Builder $query) use ($purchaseMorph): void {
+                $query->whereNull('source_type')
+                    ->orWhere('source_type', $purchaseMorph);
+            })
             ->with(['lines.ledgerAccount', 'vendor', 'source']);
     }
 

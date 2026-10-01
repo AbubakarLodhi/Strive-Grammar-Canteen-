@@ -146,6 +146,35 @@ class FinanceLedgerVendorAccountTest extends TestCase
         $this->assertSoftDeleted($account);
     }
 
+    public function test_it_purges_empty_orphan_party_accounts_that_duplicate_vendor_payables(): void
+    {
+        $merchant = $this->createMerchant();
+        $vendor = $this->createVendor($merchant, 'City Uniform');
+        $ledger = new FinanceLedger;
+
+        $canonical = $ledger->ensureVendorPayableAccount($vendor);
+
+        $orphan = LedgerAccount::query()->create([
+            'merchant_id' => $merchant->id,
+            'code' => '6005',
+            'name' => 'City Uniform',
+            'type' => LedgerAccountType::Liability,
+            'is_bank' => false,
+            'is_system' => false,
+            'is_active' => true,
+            'opening_balance' => 0,
+        ]);
+
+        $removed = $ledger->purgeOrphanDuplicatePartyAccounts($merchant->id);
+
+        $this->assertSame(1, $removed);
+        $this->assertSoftDeleted($orphan);
+        $this->assertDatabaseHas('ledger_accounts', [
+            'id' => $canonical->id,
+            'deleted_at' => null,
+        ]);
+    }
+
     public function test_provision_renames_legacy_purchases_account_to_cogs(): void
     {
         $merchant = $this->createMerchant();
