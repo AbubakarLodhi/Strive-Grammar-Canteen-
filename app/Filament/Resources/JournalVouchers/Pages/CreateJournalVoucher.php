@@ -31,7 +31,7 @@ class CreateJournalVoucher extends CreateRecord
         $data['created_by'] = FinanceAccess::createdBy();
         $data['status'] = FinanceDocumentStatus::Draft;
 
-        return DB::transaction(function () use ($data, $lines) {
+        return DB::transaction(function () use ($data, $lines, $ledger) {
             $voucher = static::getModel()::create($data);
 
             foreach (array_values($lines) as $index => $line) {
@@ -44,7 +44,8 @@ class CreateJournalVoucher extends CreateRecord
                 ]);
             }
 
-            return $voucher;
+            // Post immediately so the voucher appears in General Ledger / Cash Book.
+            return $ledger->postVoucher($voucher->fresh(['lines']));
         });
     }
 }

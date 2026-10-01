@@ -11,6 +11,7 @@ use App\Models\City;
 use App\Models\Country;
 use App\Models\Customer;
 use App\Models\JournalVoucher;
+use App\Models\JournalVoucherLine;
 use App\Models\LedgerAccount;
 use App\Models\Merchant;
 use App\Models\OnlineBankTransfer;
@@ -125,6 +126,66 @@ class FinanceGapsTest extends TestCase
 
         $this->expectException(\RuntimeException::class);
         $jv->fresh()->delete();
+    }
+
+    public function test_manual_journal_voucher_is_posted_and_affects_general_ledger(): void
+    {
+        [$merchant, $cash, $counter] = $this->seedMerchantAccounts();
+
+        $ledger = app(FinanceLedger::class);
+        $lines = [
+            [
+                'ledger_account_id' => $cash->id,
+                'description' => 'Vendor payment debit',
+                'debit' => 900,
+                'credit' => 0,
+            ],
+            [
+                'ledger_account_id' => $counter->id,
+                'description' => 'Vendor payment credit',
+                'debit' => 0,
+                'credit' => 900,
+            ],
+        ];
+
+        $ledger->assertBalanced($lines);
+
+        $jv = JournalVoucher::query()->create([
+            'id' => Str::uuid()->toString(),
+            'merchant_id' => $merchant->id,
+            'voucher_no' => 'JV-20261001-0009',
+            'voucher_date' => now()->toDateString(),
+            'narration' => 'Vendor payment — Mustaqeem Leather House',
+            'status' => FinanceDocumentStatus::Draft,
+        ]);
+
+        foreach (array_values($lines) as $index => $line) {
+            $jv->lines()->create([
+                ...$line,
+                'sort_order' => $index + 1,
+            ]);
+        }
+
+        $posted = $ledger->postVoucher($jv->fresh(['lines']));
+
+        $this->assertTrue($posted->isPosted());
+        $this->assertNotNull($posted->posted_at);
+        $this->assertSame('900.00', $cash->fresh()->postedBalance());
+
+        $glLineCount = JournalVoucherLine::query()
+            ->where('ledger_account_id', $cash->id)
+            ->whereHas('journalVoucher', fn ($q) => $q->where('status', FinanceDocumentStatus::Posted->value))
+            ->count();
+
+        $this->assertSame(1, $glLineCount);
+    }
+
+    public function test_create_journal_voucher_page_posts_on_save(): void
+    {
+        $create = file_get_contents(app_path('Filament/Resources/JournalVouchers/Pages/CreateJournalVoucher.php'));
+
+        $this->assertStringContainsString('postVoucher', $create);
+        $this->assertStringContainsString('FinanceDocumentStatus::Draft', $create);
     }
 
     public function test_purchase_plan_debits_inventory_and_sale_plan_posts_cogs(): void
