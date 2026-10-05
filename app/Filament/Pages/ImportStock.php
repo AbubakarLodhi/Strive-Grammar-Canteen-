@@ -87,7 +87,7 @@ class ImportStock extends Page
             ->statePath('data')
             ->components([
                 Section::make('Introduce opening stock')
-                    ->description('Upload the stock Excel file (.xls / .xlsx) with columns: Product Name, Qty, Pr Price, Sell Price. Later purchases of the same products increase current stock automatically (opening + purchases − sales). Opening stock posts to Inventory (debit) and Owner Equity (credit); it is not listed under Purchases or vendor payables.')
+                    ->description('Upload the stock Excel file (.xls / .xlsx) with columns: Product Name, Qty, Pr Price, Sell Price. Later purchases of the same products increase current stock automatically (opening + purchases − sales). Opening stock updates inventory only — it is treated as already settled, with no purchase payables or debit/credit ledger entries.')
                     ->schema([
                         FileUpload::make('stock_file')
                             ->label('Opening stock Excel file')

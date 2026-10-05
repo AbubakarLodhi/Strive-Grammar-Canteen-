@@ -66,18 +66,6 @@ class OperationalLedgerPosterTest extends TestCase
         $this->assertPlanBalances($lines);
     }
 
-    public function test_opening_stock_debits_inventory_and_credits_equity(): void
-    {
-        $lines = $this->poster()->openingStockLinePlan(2500);
-
-        $this->assertSame([
-            ['code' => FinanceLedger::INVENTORY_ACCOUNT_CODE, 'debit' => 2500.0, 'credit' => 0, 'description' => 'Opening inventory'],
-            ['code' => FinanceLedger::EQUITY_ACCOUNT_CODE, 'debit' => 0, 'credit' => 2500.0, 'description' => 'Opening stock equity'],
-        ], $lines);
-
-        $this->assertPlanBalances($lines);
-    }
-
     public function test_sale_with_cogs_debits_cogs_and_credits_inventory(): void
     {
         $lines = $this->poster()->saleLinePlan(1000, 1000, 0, false, 400);

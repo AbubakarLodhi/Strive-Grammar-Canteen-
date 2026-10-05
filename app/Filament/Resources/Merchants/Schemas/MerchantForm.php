@@ -3,7 +3,6 @@
 namespace App\Filament\Resources\Merchants\Schemas;
 
 use App\Models\Merchant;
-use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
@@ -19,7 +18,11 @@ class MerchantForm
                 TextInput::make('name')
                     ->required(),
                 TextInput::make('phone')
-                    ->tel(),
+                    ->tel()
+                    ->nullable()
+                    ->helperText('Optional')
+                    ->maxLength(50)
+                    ->dehydrateStateUsing(fn ($state) => filled($state) ? $state : null),
                 TextInput::make('password')
                     ->password()
                     ->required()

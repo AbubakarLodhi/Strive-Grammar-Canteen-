@@ -7,6 +7,7 @@ use App\Models\Merchant;
 use App\Models\User;
 use App\Models\Vendor;
 use App\Support\GeoFormFields;
+use App\Support\PhoneFormFields;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Select;
@@ -25,21 +26,7 @@ class VendorForm
                 ->required()
                 ->maxLength(255),
 
-            TextInput::make('phone')
-                ->label('Phone')
-                ->tel()
-                ->default('+92')
-                ->placeholder('+923001234567')
-                ->helperText('Optional. Enter number with country code, e.g. +923001234567')
-                ->rule('nullable|regex:/^\+92\d{10}$/')
-                ->maxLength(15)
-                ->nullable()
-                ->dehydrateStateUsing(fn ($state) => filled($state) && $state !== '+92' ? $state : null)
-                ->live(onBlur: true)
-                ->afterStateUpdated(function ($state, callable $set, callable $get, $livewire) {
-                    $livewire->resetValidation('data.phone');
-                    $livewire->resetErrorBag('data.phone');
-                }),
+            PhoneFormFields::optionalPakistanPhone(),
 
             Textarea::make('address')
                 ->label('Address')

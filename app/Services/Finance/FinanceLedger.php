@@ -407,7 +407,7 @@ class FinanceLedger
 
     /**
      * Remove any vendor payable ledger account created for the opening-stock vendor.
-     * Opening stock itself posts to Inventory (1400) / Owner Equity (3000).
+     * Opening stock is inventory-only and must not post to Chart of Accounts.
      */
     public function purgeOpeningStockLedger(string $merchantId): void
     {
@@ -436,7 +436,7 @@ class FinanceLedger
     }
 
     /**
-     * Clean opening-stock vendor payables and post opening purchase value to Inventory + Equity.
+     * Remove opening-stock vendor payables and any ledger entries tied to the stock sheet purchase.
      */
     public function syncOpeningStockLedger(string $merchantId): void
     {
@@ -449,7 +449,7 @@ class FinanceLedger
             ->where('purchase_no', CanteenStockImporter::OPENING_PURCHASE_NO)
             ->whereNull('deleted_at')
             ->get()
-            ->each(fn (Purchase $purchase) => $poster->syncPurchase($purchase));
+            ->each(fn (Purchase $purchase) => $poster->forget($purchase));
     }
 
     public function syncOpeningCash(Merchant $merchant): void
@@ -548,6 +548,13 @@ class FinanceLedger
             ->where('source_id', $source->getKey())
             ->get()
             ->each(function (JournalVoucher $voucher): void {
+                if ($voucher->isPosted()) {
+                    $voucher->forceFill([
+                        'status' => FinanceDocumentStatus::Draft,
+                        'posted_at' => null,
+                    ])->saveQuietly();
+                }
+
                 $voucher->lines()->delete();
                 $voucher->delete();
             });

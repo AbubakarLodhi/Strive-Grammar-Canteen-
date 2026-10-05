@@ -3,17 +3,15 @@
 namespace App\Filament\Resources\Branches\Schemas;
 
 use App\Models\Branch;
+use App\Models\Merchant;
 use App\Models\User;
 use App\Support\GeoFormFields;
 use Filament\Facades\Filament;
-use Filament\Forms\Components\FileUpload;
-use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Schemas\Schema;
-use Filament\Tables\Columns\ToggleColumn;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Validation\Rule;
 
@@ -28,8 +26,7 @@ class BranchForm
                 ->live()
                 ->rules([
                     fn ($get) => Rule::unique('branches', 'name')
-                        ->where(fn ($query) =>
-                        $query->where('business_id', $get('business_id'))
+                        ->where(fn ($query) => $query->where('business_id', $get('business_id'))
                             ->whereNull('deleted_at')
                         )
                         ->ignore($get('id')),
@@ -41,14 +38,17 @@ class BranchForm
             Textarea::make('address')->columnSpanFull()->maxLength(400),
 
             TextInput::make('phone')
+                ->label('Phone')
                 ->tel()
-                ->minValue(0)
-                ->minLength(11)
+                ->nullable()
+                ->helperText('Optional')
+                ->rules(['nullable', 'string', 'min:11', 'max:15'])
+                ->dehydrateStateUsing(fn ($state) => filled($state) ? $state : null)
                 ->maxLength(15),
 
             Select::make('status')
                 ->options([
-                    Branch::STATUS_PENDING  => 'Pending',
+                    Branch::STATUS_PENDING => 'Pending',
                     Branch::STATUS_VERIFIED => 'Verified',
                     Branch::STATUS_REJECTED => 'Rejected',
                 ])
@@ -87,8 +87,7 @@ class BranchForm
                 ->relationship(
                     'cities',
                     'name',
-                    fn ($query, callable $get) =>
-                    $query->whereIn('country_id', $get('countries') ?? [])
+                    fn ($query, callable $get) => $query->whereIn('country_id', $get('countries') ?? [])
                 )
                 ->multiple()
                 ->createOptionForm([
@@ -113,7 +112,6 @@ class BranchForm
                     $livewire->resetErrorBag('data.cities');
                 }),
 
-
             TextInput::make('postal_code')
                 ->label('Postal Code')
                 ->placeholder('e.g. 54000')
@@ -127,7 +125,6 @@ class BranchForm
                     $livewire->resetErrorBag('data.postal_code');
                 }),
 
-
             // ✅ Business scoped for Admin / Merchant / Staff
             Select::make('business_id')
                 ->label('Business')
@@ -138,8 +135,9 @@ class BranchForm
                         $user = Filament::auth()->user();
                         $query->where('status', true);
                         // Merchant => only their businesses
-                        if ($user instanceof \App\Models\Merchant) {
+                        if ($user instanceof Merchant) {
                             $query->where('merchant_id', $user->id);
+
                             return;
                         }
 
@@ -165,7 +163,7 @@ class BranchForm
                 ->label('Active')
                 ->default(false)
                 ->disabled(fn (callable $get) => $get('status') !== Branch::STATUS_VERIFIED)
-                ->dehydrated(true),// 🔑 FORCE saving even when disabled
+                ->dehydrated(true), // 🔑 FORCE saving even when disabled
 
         ]);
     }

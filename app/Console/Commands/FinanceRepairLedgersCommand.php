@@ -65,7 +65,7 @@ class FinanceRepairLedgersCommand extends Command
                 ->where('purchase_no', CanteenStockImporter::OPENING_PURCHASE_NO)
                 ->get();
 
-            $this->line('  Opening stock purchases to post (Inventory / Equity): '.$openingPurchases->count());
+            $this->line('  Opening stock purchases to clear from ledger: '.$openingPurchases->count());
             if (! $dryRun) {
                 $ledger->syncOpeningStockLedger($merchant->id);
             }

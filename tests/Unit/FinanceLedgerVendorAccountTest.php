@@ -2,13 +2,17 @@
 
 namespace Tests\Unit;
 
+use App\Enums\FinanceDocumentStatus;
 use App\Enums\LedgerAccountType;
 use App\Models\City;
 use App\Models\Country;
+use App\Models\JournalVoucher;
 use App\Models\LedgerAccount;
 use App\Models\Merchant;
+use App\Models\Purchase;
 use App\Models\Vendor;
 use App\Services\Finance\FinanceLedger;
+use App\Services\Finance\OperationalLedgerPoster;
 use App\Services\Inventory\CanteenStockImporter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
@@ -144,6 +148,55 @@ class FinanceLedgerVendorAccountTest extends TestCase
         (new FinanceLedger)->purgeOpeningStockLedger($merchant->id);
 
         $this->assertSoftDeleted($account);
+    }
+
+    public function test_opening_stock_does_not_post_or_keep_ledger_entries(): void
+    {
+        $merchant = $this->createMerchant();
+        $vendor = $this->createVendor($merchant, CanteenStockImporter::OPENING_VENDOR_NAME);
+        $vendor->forceFill([
+            'email' => CanteenStockImporter::OPENING_VENDOR_EMAIL,
+            'reference' => CanteenStockImporter::OPENING_VENDOR_REFERENCE,
+        ])->save();
+
+        $purchase = Purchase::query()->create([
+            'id' => Str::uuid()->toString(),
+            'merchant_id' => $merchant->id,
+            'vendor_id' => $vendor->id,
+            'purchase_no' => CanteenStockImporter::OPENING_PURCHASE_NO,
+            'purchase_date' => now()->toDateString(),
+            'subtotal' => 2500,
+            'total_amount' => 2500,
+            'paid_amount' => 2500,
+            'due_amount' => 0,
+            'payment_type' => 'cash',
+        ]);
+
+        JournalVoucher::query()->create([
+            'id' => Str::uuid()->toString(),
+            'merchant_id' => $merchant->id,
+            'source_type' => $purchase->getMorphClass(),
+            'source_id' => $purchase->id,
+            'voucher_no' => 'JV-OPENING-OLD',
+            'voucher_date' => now()->toDateString(),
+            'narration' => 'Opening stock legacy entry',
+            'status' => FinanceDocumentStatus::Posted,
+        ]);
+
+        $ledger = new FinanceLedger;
+        $ledger->provisionDefaultAccounts($merchant);
+        $ledger->syncOpeningStockLedger($merchant->id);
+
+        app(OperationalLedgerPoster::class)->syncPurchase($purchase->fresh());
+
+        $this->assertSame(
+            0,
+            JournalVoucher::query()
+                ->where('merchant_id', $merchant->id)
+                ->where('source_type', $purchase->getMorphClass())
+                ->where('source_id', $purchase->id)
+                ->count(),
+        );
     }
 
     public function test_it_purges_empty_orphan_party_accounts_that_duplicate_vendor_payables(): void

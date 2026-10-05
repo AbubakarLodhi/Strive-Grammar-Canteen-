@@ -164,8 +164,8 @@ class CanteenStockImporter
                     'total_amount' => 0,
                     'paid_amount' => 0,
                     'due_amount' => 0,
-                    'payment_type' => 'credit',
-                    'notes' => 'Opening stock. Managed from Opening Stock page; not shown in Purchases or Chart of Accounts.',
+                    'payment_type' => 'cash',
+                    'notes' => 'Opening stock. Managed from Opening Stock page; not shown in Purchases or Chart of Accounts. Settled — no payables or ledger posting.',
                     'created_by' => $createdBy,
                     'deleted_at' => null,
                 ],
@@ -314,11 +314,11 @@ class CanteenStockImporter
             $purchase->forceFill([
                 'subtotal' => $subtotal,
                 'total_amount' => $subtotal,
-                'paid_amount' => 0,
-                'due_amount' => $subtotal,
-                'payment_type' => 'credit',
+                'paid_amount' => $subtotal,
+                'due_amount' => 0,
+                'payment_type' => 'cash',
                 'purchase_date' => now()->toDateString(),
-                'notes' => 'Opening stock. Managed from Opening Stock page; not listed under Purchases. Posted to Inventory and Owner Equity.',
+                'notes' => 'Opening stock. Managed from Opening Stock page; not listed under Purchases. Settled — no payables or ledger posting.',
             ])->save();
 
             app(FinanceLedger::class)->syncOpeningStockLedger($merchant->id);

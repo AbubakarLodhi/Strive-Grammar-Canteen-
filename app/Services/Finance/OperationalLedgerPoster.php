@@ -83,19 +83,6 @@ class OperationalLedgerPoster
     /**
      * @return list<array{code: string, debit: float, credit: float, description: string}>
      */
-    public function openingStockLinePlan(float $total): array
-    {
-        $total = round(max(0, $total), 2);
-
-        return $this->compactLines([
-            ['code' => FinanceLedger::INVENTORY_ACCOUNT_CODE, 'debit' => $total, 'credit' => 0, 'description' => 'Opening inventory'],
-            ['code' => FinanceLedger::EQUITY_ACCOUNT_CODE, 'debit' => 0, 'credit' => $total, 'description' => 'Opening stock equity'],
-        ]);
-    }
-
-    /**
-     * @return list<array{code: string, debit: float, credit: float, description: string}>
-     */
     public function expenseLinePlan(
         float $total,
         bool $paidFromBank = false,
@@ -232,22 +219,7 @@ class OperationalLedgerPoster
     public function syncPurchase(Purchase $purchase): void
     {
         if (CanteenStockImporter::isOpeningStockPurchase($purchase)) {
-            $total = round((float) $purchase->total_amount, 2);
-
-            if ($total <= 0) {
-                $this->ledger->removeForSource($purchase);
-
-                return;
-            }
-
-            $this->postPlan(
-                $purchase,
-                $purchase->merchant_id,
-                $purchase->purchase_date,
-                'Opening stock '.$purchase->purchase_no,
-                $this->openingStockLinePlan($total),
-                $purchase->created_by,
-            );
+            $this->ledger->removeForSource($purchase);
 
             return;
         }

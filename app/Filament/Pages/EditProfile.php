@@ -103,7 +103,10 @@ class EditProfile extends Page
                         TextInput::make('phone')
                             ->label('Phone No')
                             ->tel()
-                            ->maxLength(50),
+                            ->nullable()
+                            ->helperText('Optional')
+                            ->maxLength(50)
+                            ->dehydrateStateUsing(fn ($state) => filled($state) ? $state : null),
 
                         TextInput::make('website')
                             ->label('Website')
@@ -124,7 +127,10 @@ class EditProfile extends Page
                         TextInput::make('whatsapp_number')
                             ->label('WhatsApp No')
                             ->tel()
-                            ->maxLength(50),
+                            ->nullable()
+                            ->helperText('Optional')
+                            ->maxLength(50)
+                            ->dehydrateStateUsing(fn ($state) => filled($state) ? $state : null),
 
                         TextInput::make('ntn_number')
                             ->label('NTN No (Optional)')
