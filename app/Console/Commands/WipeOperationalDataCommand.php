@@ -16,11 +16,11 @@ class WipeOperationalDataCommand extends Command
                             {--reimport-stock : Re-import opening stock after wipe}
                             {--merchant= : Merchant email to re-import stock for (default: all merchants)}';
 
-    protected $description = 'Wipe sales/purchases/stock/ledger test data while keeping merchant/staff logins, branches, and customers';
+    protected $description = 'Wipe sales/purchases/stock/ledger test data while keeping merchant and staff login accounts';
 
     /**
      * Operational / transactional tables cleared for a clean go-live.
-     * Login accounts, branches, businesses, and customers are intentionally omitted.
+     * Login, structure, and catalog tables are intentionally omitted.
      *
      * @var list<string>
      */
@@ -69,6 +69,9 @@ class WipeOperationalDataCommand extends Command
         'vendor_businesses',
         'vendor_branches',
         'vendors',
+        'customer_businesses',
+        'customer_branches',
+        'customers',
         'ledger_accounts',
         'assets',
         'asset_types',
@@ -79,31 +82,9 @@ class WipeOperationalDataCommand extends Command
         'audits',
     ];
 
-    /**
-     * Tables that must never be wiped (login + core structure).
-     *
-     * @var list<string>
-     */
-    private const PRESERVE_TABLES = [
-        'merchants',
-        'users',
-        'branches',
-        'businesses',
-        'customers',
-        'customer_businesses',
-        'customer_branches',
-        'countries',
-        'cities',
-        'roles',
-        'permissions',
-        'model_has_roles',
-        'model_has_permissions',
-        'role_has_permissions',
-    ];
-
     public function handle(FinanceLedger $ledger, CanteenStockImporter $importer): int
     {
-        if (! $this->option('force') && ! $this->confirm('Wipe operational/test data but keep merchant/staff logins, branches, and customers?')) {
+        if (! $this->option('force') && ! $this->confirm('Wipe all operational/test data but keep merchant & staff logins?')) {
             $this->warn('Aborted.');
 
             return self::FAILURE;
@@ -116,34 +97,13 @@ class WipeOperationalDataCommand extends Command
         $this->components->warn("Target database: {$database} @ {$host}");
 
         $merchantEmailsBefore = Merchant::query()->pluck('email')->all();
-        $this->components->info('Preserving merchants: '.implode(', ', $merchantEmailsBefore ?: ['(none)']));
-        $this->components->info('Also preserving: branches, businesses, customers');
+        $this->components->info('Preserving merchants: '.implode(', ', $merchantEmailsBefore));
 
-        $overlap = array_values(array_intersect(self::WIPE_TABLES, self::PRESERVE_TABLES));
-
-        if ($overlap !== []) {
-            $this->error('Safety check failed. These preserve tables are listed for wipe: '.implode(', ', $overlap));
-
-            return self::FAILURE;
-        }
-
-        $driver = DB::getDriverName();
-
-        if ($driver === 'mysql') {
-            DB::statement('SET FOREIGN_KEY_CHECKS=0');
-        } elseif ($driver === 'sqlite') {
-            DB::statement('PRAGMA foreign_keys = OFF');
-        }
+        DB::statement('SET FOREIGN_KEY_CHECKS=0');
 
         $cleared = 0;
 
         foreach (self::WIPE_TABLES as $table) {
-            if (in_array($table, self::PRESERVE_TABLES, true)) {
-                $this->warn("  skipped preserved table {$table}");
-
-                continue;
-            }
-
             if (! Schema::hasTable($table)) {
                 continue;
             }
@@ -153,11 +113,7 @@ class WipeOperationalDataCommand extends Command
             $this->line("  truncated {$table}");
         }
 
-        if ($driver === 'mysql') {
-            DB::statement('SET FOREIGN_KEY_CHECKS=1');
-        } elseif ($driver === 'sqlite') {
-            DB::statement('PRAGMA foreign_keys = ON');
-        }
+        DB::statement('SET FOREIGN_KEY_CHECKS=1');
 
         $this->components->info("Cleared {$cleared} tables.");
 
@@ -205,8 +161,8 @@ class WipeOperationalDataCommand extends Command
         }
 
         $merchantEmailsAfter = Merchant::query()->pluck('email')->all();
-        $this->components->info('Merchants still present: '.implode(', ', $merchantEmailsAfter ?: ['(none)']));
-        $this->components->success('Operational data wipe complete. Logins, branches, and customers were not changed.');
+        $this->components->info('Merchants still present: '.implode(', ', $merchantEmailsAfter));
+        $this->components->success('Operational data wipe complete. Merchant credentials were not changed.');
 
         return self::SUCCESS;
     }
