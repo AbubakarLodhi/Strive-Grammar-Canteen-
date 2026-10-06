@@ -7,6 +7,7 @@ use App\Enums\AttachmentType;
 use App\Filament\Resources\Purchases\PurchaseResource;
 use App\Models\Branch;
 use App\Models\Merchant;
+use App\Services\Finance\OperationalLedgerPoster;
 use App\Services\Notifications\NotificationDispatcher;
 use App\Services\PaymentLedgerService;
 use App\Support\ProductStockAvailability;
@@ -29,11 +30,13 @@ class CreatePurchase extends CreateRecord
 
     protected function afterCreate(): void
     {
-        $purchase = $this->record->fresh(['vendor', 'merchant']);
+        $purchase = $this->record->fresh(['vendor', 'merchant', 'payments']);
 
         if (! $purchase) {
             return;
         }
+
+        app(OperationalLedgerPoster::class)->syncPurchase($purchase);
 
         try {
             app(NotificationDispatcher::class)->dispatchPurchaseCreated($purchase);

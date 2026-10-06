@@ -186,6 +186,7 @@ class PurchaseReturnService
         ]);
 
         PaymentLedgerService::syncPurchaseTotals($purchase->refresh());
+        app(OperationalLedgerPoster::class)->syncPurchase($purchase->fresh(['payments', 'vendor']) ?? $purchase);
     }
 
     protected static function buildVariantAllocations($variantRows, int $returnQty, float $fallbackUnitPrice): array

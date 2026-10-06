@@ -5,6 +5,7 @@ namespace App\Filament\Resources\Purchases\Pages;
 use App\Filament\Resources\Purchases\PurchaseResource;
 use App\Models\Branch;
 use App\Models\Payment;
+use App\Services\Finance\OperationalLedgerPoster;
 use App\Services\PaymentLedgerService;
 use App\Support\ProductStockAvailability;
 use Filament\Actions\Action;
@@ -265,6 +266,10 @@ class EditPurchase extends EditRecord
                 );
             }
         });
+
+        app(OperationalLedgerPoster::class)->syncPurchase(
+            $this->record->fresh(['payments', 'vendor']) ?? $this->record
+        );
     }
 
     public function previousItemsPage(): void
@@ -600,6 +605,9 @@ class EditPurchase extends EditRecord
 
         $payment->delete();
         PaymentLedgerService::syncPurchaseTotals($this->record->fresh());
+        app(OperationalLedgerPoster::class)->syncPurchase(
+            $this->record->fresh(['payments', 'vendor']) ?? $this->record
+        );
 
         $this->record = $this->record->fresh(['items.variants', 'payments', 'vendor']);
         $this->form->fill($this->mutateFormDataBeforeFill($this->record->attributesToArray()));

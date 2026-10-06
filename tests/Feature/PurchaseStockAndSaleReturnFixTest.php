@@ -239,7 +239,7 @@ class PurchaseStockAndSaleReturnFixTest extends TestCase
         );
     }
 
-    public function test_vendor_purchase_does_not_auto_create_journal_voucher(): void
+    public function test_vendor_purchase_auto_posts_journal_voucher_to_general_ledger(): void
     {
         [$merchant, $branch, $variant] = $this->seedStockedProduct(quantity: 0);
         [$country, $city] = $this->createGeo();
@@ -284,18 +284,23 @@ class PurchaseStockAndSaleReturnFixTest extends TestCase
             'line_total' => 500,
         ]);
 
-        $this->assertFalse(
-            JournalVoucher::query()
-                ->where('source_type', Purchase::class)
-                ->where('source_id', $purchase->id)
-                ->exists()
-        );
+        app(FinanceLedger::class)->provisionDefaultAccounts($merchant);
+        app(OperationalLedgerPoster::class)->syncPurchase($purchase->fresh(['payments', 'vendor']));
+
+        $voucher = JournalVoucher::query()
+            ->where('source_type', $purchase->getMorphClass())
+            ->where('source_id', $purchase->id)
+            ->first();
+
+        $this->assertNotNull($voucher);
+        $this->assertTrue($voucher->isPosted());
+        $this->assertStringContainsString('PUR-JV-1', (string) $voucher->narration);
 
         $create = file_get_contents(app_path('Filament/Resources/Purchases/Pages/CreatePurchase.php'));
         $edit = file_get_contents(app_path('Filament/Resources/Purchases/Pages/EditPurchase.php'));
 
-        $this->assertStringNotContainsString('syncPurchase(', $create);
-        $this->assertStringNotContainsString('syncPurchase(', $edit);
+        $this->assertStringContainsString('syncPurchase(', $create);
+        $this->assertStringContainsString('syncPurchase(', $edit);
     }
 
     /**
