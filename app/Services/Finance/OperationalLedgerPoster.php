@@ -242,18 +242,8 @@ class OperationalLedgerPoster
             $payableCode = $this->ledger->ensureVendorPayableAccount($purchase->vendor)->code;
         }
 
-        // Relink any older manual JV that matches this purchase by narration,
-        // so auto-posting updates it instead of creating a duplicate.
-        $existing = $this->ledger->findVoucherForPurchase($purchase);
-
-        if ($existing && ((string) $existing->source_id !== (string) $purchase->getKey())) {
-            $existing->forceFill([
-                'source_type' => $purchase->getMorphClass(),
-                'source_id' => $purchase->getKey(),
-                'vendor_id' => $purchase->vendor_id,
-            ])->save();
-        }
-
+        // Keep the operational purchase voucher on its source link only.
+        // Manual JVs for the same purchase stay separate (no source link).
         $this->postPlan(
             $purchase,
             $purchase->merchant_id,

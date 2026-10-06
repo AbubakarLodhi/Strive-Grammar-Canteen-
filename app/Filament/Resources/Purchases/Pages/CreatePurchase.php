@@ -36,6 +36,7 @@ class CreatePurchase extends CreateRecord
             return;
         }
 
+        // Purchase operational entry in GL (separate from any later manual JV).
         app(OperationalLedgerPoster::class)->syncPurchase($purchase);
 
         try {

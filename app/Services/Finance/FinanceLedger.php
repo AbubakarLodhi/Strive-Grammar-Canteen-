@@ -351,7 +351,7 @@ class FinanceLedger
     }
 
     /**
-     * Create missing vendor payable accounts and re-post purchases for newly created parties.
+     * Create missing vendor payable accounts and re-sync operational purchase GL entries.
      */
     public function backfillVendorPayableAccounts(string $merchantId): void
     {

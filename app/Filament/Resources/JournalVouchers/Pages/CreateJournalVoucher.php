@@ -10,7 +10,6 @@ use App\Support\FinanceAccess;
 use Filament\Resources\Pages\CreateRecord;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\ValidationException;
 
 class CreateJournalVoucher extends CreateRecord
 {
@@ -43,16 +42,17 @@ class CreateJournalVoucher extends CreateRecord
                 ->first();
 
             if ($purchase) {
-                $existing = $ledger->findVoucherForPurchase($purchase);
-
-                if ($existing) {
-                    throw ValidationException::withMessages([
-                        'data.purchase_id' => "Purchase {$purchase->purchase_no} already has voucher {$existing->voucher_no}. Saving again would double the General Ledger amount.",
-                    ]);
+                // Manual JV stays separate from the operational purchase GL entry.
+                // Do not attach source_type/source_id so both can appear in General Ledger.
+                $vendorName = trim((string) ($purchase->vendor?->name ?? ''));
+                if (blank($data['narration'] ?? null)) {
+                    $data['narration'] = 'Manual JV — Purchase '.$purchase->purchase_no
+                        .($vendorName !== '' ? ' — '.$vendorName : '');
                 }
 
-                $data['source_type'] = $purchase->getMorphClass();
-                $data['source_id'] = $purchase->id;
+                if (blank($data['vendor_id'] ?? null) && filled($purchase->vendor_id)) {
+                    $data['vendor_id'] = $purchase->vendor_id;
+                }
             }
         }
 

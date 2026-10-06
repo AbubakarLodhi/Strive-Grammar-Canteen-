@@ -18,7 +18,6 @@ use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
-use Filament\Notifications\Notification;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Components\Utilities\Set;
@@ -67,7 +66,7 @@ class JournalVoucherForm
                 ]),
 
             Section::make('From Purchase')
-                ->description('Optional. Select a purchase to auto-fill Inventory and vendor payable / cash lines. Purchases that already have a journal voucher are hidden so the same purchase is not posted twice.')
+                ->description('Optional. Select a purchase to auto-fill lines. The purchase already posts its own operational entry to General Ledger; this manual JV is an additional entry for the same purchase.')
                 ->columns(1)
                 ->columnSpanFull()
                 ->schema([
@@ -179,22 +178,6 @@ class JournalVoucherForm
             return;
         }
 
-        $existing = app(FinanceLedger::class)->findVoucherForPurchase($purchase);
-
-        if ($existing) {
-            $set('purchase_id', null);
-            $set('lines', []);
-            $set('payment_amount', null);
-
-            Notification::make()
-                ->title('Purchase already journaled')
-                ->body("{$purchase->purchase_no} already has voucher {$existing->voucher_no}. Creating another would double the amount in the General Ledger.")
-                ->warning()
-                ->send();
-
-            return;
-        }
-
         $ledger = app(FinanceLedger::class);
         $poster = app(OperationalLedgerPoster::class);
         $vendorName = trim((string) ($purchase->vendor?->name ?? ''));
@@ -237,7 +220,7 @@ class JournalVoucherForm
         $set('voucher_date', optional($purchase->purchase_date)?->toDateString() ?? now()->toDateString());
         $set(
             'narration',
-            'Purchase '.$purchase->purchase_no.($vendorName !== '' ? ' — '.$vendorName : '')
+            'Manual JV — Purchase '.$purchase->purchase_no.($vendorName !== '' ? ' — '.$vendorName : '')
         );
         $set('payment_amount', null);
     }
@@ -313,16 +296,15 @@ class JournalVoucherForm
             ->orderByDesc('purchase_date')
             ->limit(200)
             ->get()
-            ->reject(function (Purchase $purchase) use ($already): bool {
-                return in_array((string) $purchase->id, $already['ids'], true)
-                    || in_array((string) $purchase->purchase_no, $already['numbers'], true);
-            })
-            ->mapWithKeys(function (Purchase $purchase): array {
+            ->mapWithKeys(function (Purchase $purchase) use ($already): array {
                 $vendor = $purchase->vendor?->name ?: 'No vendor';
                 $amount = number_format((float) $purchase->total_amount, 2);
+                $hasOperational = in_array((string) $purchase->id, $already['ids'], true)
+                    || in_array((string) $purchase->purchase_no, $already['numbers'], true);
+                $suffix = $hasOperational ? ' · GL posted' : '';
 
                 return [
-                    $purchase->id => "{$purchase->purchase_no} — {$vendor} (PKR {$amount})",
+                    $purchase->id => "{$purchase->purchase_no} — {$vendor} (PKR {$amount}){$suffix}",
                 ];
             })
             ->all();

@@ -53,7 +53,7 @@ class FinanceRepairLedgersCommand extends Command
                 ->get()
                 ->reject(fn (Purchase $purchase) => CanteenStockImporter::isOpeningStockPurchase($purchase));
 
-            $this->line('  Purchases to re-post: '.$purchases->count());
+            $this->line('  Purchases to re-post (operational GL): '.$purchases->count());
             if (! $dryRun) {
                 foreach ($purchases as $purchase) {
                     $poster->syncPurchase($purchase);

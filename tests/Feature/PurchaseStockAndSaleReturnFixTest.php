@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\FinanceDocumentStatus;
 use App\Models\Branch;
 use App\Models\Business;
 use App\Models\City;
@@ -239,7 +240,7 @@ class PurchaseStockAndSaleReturnFixTest extends TestCase
         );
     }
 
-    public function test_vendor_purchase_auto_posts_journal_voucher_to_general_ledger(): void
+    public function test_vendor_purchase_posts_to_gl_and_allows_separate_manual_jv(): void
     {
         [$merchant, $branch, $variant] = $this->seedStockedProduct(quantity: 0);
         [$country, $city] = $this->createGeo();
@@ -287,20 +288,82 @@ class PurchaseStockAndSaleReturnFixTest extends TestCase
         app(FinanceLedger::class)->provisionDefaultAccounts($merchant);
         app(OperationalLedgerPoster::class)->syncPurchase($purchase->fresh(['payments', 'vendor']));
 
-        $voucher = JournalVoucher::query()
+        $operational = JournalVoucher::query()
             ->where('source_type', $purchase->getMorphClass())
             ->where('source_id', $purchase->id)
             ->first();
 
-        $this->assertNotNull($voucher);
-        $this->assertTrue($voucher->isPosted());
-        $this->assertStringContainsString('PUR-JV-1', (string) $voucher->narration);
+        $this->assertNotNull($operational);
+        $this->assertTrue($operational->isPosted());
+
+        $manual = JournalVoucher::query()->create([
+            'id' => Str::uuid()->toString(),
+            'merchant_id' => $merchant->id,
+            'voucher_no' => 'JV-MANUAL-1',
+            'voucher_date' => now()->toDateString(),
+            'narration' => 'Manual JV — Purchase PUR-JV-1 — Paper House',
+            'status' => FinanceDocumentStatus::Draft,
+            'vendor_id' => $vendor->id,
+        ]);
+
+        $inventory = LedgerAccount::query()
+            ->where('merchant_id', $merchant->id)
+            ->where('code', FinanceLedger::INVENTORY_ACCOUNT_CODE)
+            ->firstOrFail();
+        $payable = app(FinanceLedger::class)->ensureVendorPayableAccount($vendor);
+
+        $manual->lines()->createMany([
+            [
+                'ledger_account_id' => $inventory->id,
+                'description' => 'Manual purchase inventory',
+                'debit' => 500,
+                'credit' => 0,
+                'sort_order' => 1,
+            ],
+            [
+                'ledger_account_id' => $payable->id,
+                'description' => 'Manual purchase payable',
+                'debit' => 0,
+                'credit' => 500,
+                'sort_order' => 2,
+            ],
+        ]);
+
+        app(FinanceLedger::class)->postVoucher($manual->fresh(['lines']));
+
+        $this->assertSame(
+            2,
+            JournalVoucher::query()
+                ->where('merchant_id', $merchant->id)
+                ->where(function ($query) use ($purchase, $manual): void {
+                    $query
+                        ->where(function ($q) use ($purchase): void {
+                            $q->where('source_type', $purchase->getMorphClass())
+                                ->where('source_id', $purchase->id);
+                        })
+                        ->orWhere('id', $manual->id);
+                })
+                ->count()
+        );
+
+        // Editing the purchase must refresh the operational voucher only.
+        app(OperationalLedgerPoster::class)->syncPurchase($purchase->fresh(['payments', 'vendor']));
+        $this->assertNull($manual->fresh()->source_id);
+        $this->assertNotNull(
+            JournalVoucher::query()
+                ->where('source_type', $purchase->getMorphClass())
+                ->where('source_id', $purchase->id)
+                ->first()
+        );
 
         $create = file_get_contents(app_path('Filament/Resources/Purchases/Pages/CreatePurchase.php'));
         $edit = file_get_contents(app_path('Filament/Resources/Purchases/Pages/EditPurchase.php'));
+        $jvCreate = file_get_contents(app_path('Filament/Resources/JournalVouchers/Pages/CreateJournalVoucher.php'));
 
         $this->assertStringContainsString('syncPurchase(', $create);
         $this->assertStringContainsString('syncPurchase(', $edit);
+        $this->assertStringNotContainsString('findVoucherForPurchase', $jvCreate);
+        $this->assertStringNotContainsString("data['source_type']", $jvCreate);
     }
 
     /**
