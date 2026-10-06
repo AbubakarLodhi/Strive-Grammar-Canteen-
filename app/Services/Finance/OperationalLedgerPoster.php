@@ -70,13 +70,18 @@ class OperationalLedgerPoster
             $paid = round(max(0, $total - $due), 2);
         }
 
+        // Cash in Hand (1000) is reserved for sales. Purchases settle only to bank
+        // and/or vendor payable — never to Cash in Hand.
+        $bankPaid = $paidFromBank ? $paid : 0.0;
+        $payable = round(max(0, $total - $bankPaid), 2);
+
         $purchaseLabel = filled($purchaseNo) ? 'Purchase '.$purchaseNo : 'Purchase';
         $vendorSuffix = filled($vendorName) ? ' — '.$vendorName : '';
 
         return $this->compactLines([
             ['code' => FinanceLedger::INVENTORY_ACCOUNT_CODE, 'debit' => $total, 'credit' => 0, 'description' => $purchaseLabel.' inventory'.$vendorSuffix],
-            ['code' => $paidFromBank ? '1010' : '1000', 'debit' => 0, 'credit' => $paid, 'description' => $purchaseLabel.' amount paid'.$vendorSuffix],
-            ['code' => $payableCode, 'debit' => 0, 'credit' => $due, 'description' => $purchaseLabel.' amount payable'.$vendorSuffix],
+            ['code' => '1010', 'debit' => 0, 'credit' => $bankPaid, 'description' => $purchaseLabel.' amount paid (bank)'.$vendorSuffix],
+            ['code' => $payableCode, 'debit' => 0, 'credit' => $payable, 'description' => $purchaseLabel.' amount payable'.$vendorSuffix],
         ]);
     }
 
@@ -91,7 +96,9 @@ class OperationalLedgerPoster
     ): array {
         $total = round(max(0, $total), 2);
         $expenseCode = $expenseCode ?: '5100';
-        $paidFromCode = $paidFromCode ?: ($paidFromBank ? '1010' : '1000');
+        $paidFromCode = $this->nonCashSettlementCode(
+            $paidFromCode ?: '1010'
+        );
 
         return $this->compactLines([
             ['code' => $expenseCode, 'debit' => $total, 'credit' => 0, 'description' => 'Operating expense'],
@@ -108,7 +115,7 @@ class OperationalLedgerPoster
 
         return $this->compactLines([
             ['code' => '5200', 'debit' => $netSalary, 'credit' => 0, 'description' => 'Payroll'],
-            ['code' => $paidFromBank ? '1010' : '1000', 'debit' => 0, 'credit' => $netSalary, 'description' => 'Salary paid'],
+            ['code' => '1010', 'debit' => 0, 'credit' => $netSalary, 'description' => 'Salary paid'],
         ]);
     }
 
@@ -169,7 +176,10 @@ class OperationalLedgerPoster
         string $payableCode = '2000',
     ): array {
         $total = round(max(0, $total), 2);
-        $settlementCode = $creditVendor ? $payableCode : ($refundFromBank ? '1010' : '1000');
+        // Never settle purchase returns through Cash in Hand — only bank or vendor payable.
+        $settlementCode = $creditVendor || ! $refundFromBank
+            ? $payableCode
+            : '1010';
         $vendorSuffix = filled($vendorName) ? ' — '.$vendorName : '';
 
         return $this->compactLines([
@@ -268,7 +278,7 @@ class OperationalLedgerPoster
         $expense->loadMissing(['expenseAccount', 'paidFromAccount']);
 
         $expenseCode = $expense->expenseAccount?->code ?: '5100';
-        $paidFromCode = $expense->paidFromAccount?->code ?: '1000';
+        $paidFromCode = $this->nonCashSettlementCode($expense->paidFromAccount?->code ?: '1010');
 
         $this->postPlan(
             $expense,
@@ -433,6 +443,20 @@ class OperationalLedgerPoster
         }
 
         return false;
+    }
+
+    /**
+     * Cash in Hand is reserved for sales / sale returns. Remap any other settlement to bank.
+     */
+    private function nonCashSettlementCode(?string $code): string
+    {
+        $code = trim((string) $code);
+
+        if ($code === '' || $code === FinanceLedger::CASH_ACCOUNT_CODE) {
+            return '1010';
+        }
+
+        return $code;
     }
 
     /**

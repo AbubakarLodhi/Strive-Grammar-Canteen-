@@ -1134,7 +1134,7 @@ class PurchaseForm
         $currentPaymentValue = $get($rootPrefix.'current_payment_amount');
 
         $currentPayment = $currentPaymentValue === null || $currentPaymentValue === ''
-            ? ($previousPaid > 0 ? 0.0 : $totalAmount)
+            ? 0.0
             : (float) $currentPaymentValue;
 
         $currentPayment = max(0, min($maxCurrentPayment, $currentPayment));

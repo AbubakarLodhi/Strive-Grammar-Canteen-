@@ -500,7 +500,7 @@ class EditPurchase extends EditRecord
         $paidAmount = $data['paid_amount'] ?? null;
 
         $paidAmount = $paidAmount === null || $paidAmount === ''
-            ? $totalAmount
+            ? 0.0
             : (float) $paidAmount;
 
         $paidAmount = max(0, min($totalAmount, $paidAmount));
