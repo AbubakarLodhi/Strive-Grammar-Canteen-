@@ -135,7 +135,13 @@ class SaleReturnService
 
             self::recalculateSaleTotals($sale);
 
-            app(OperationalLedgerPoster::class)->syncSaleReturn(
+            $poster = app(OperationalLedgerPoster::class);
+
+            // Re-post the parent sale at net remaining totals first so cash / AR /
+            // sales revenue move with the reduced sale. The return voucher then only
+            // restores inventory (avoids double-subtracting cash and sales).
+            $poster->syncSale($sale->fresh(['payments', 'items.product']) ?? $sale);
+            $poster->syncSaleReturn(
                 $return->fresh(['sale.payments', 'items.product', 'items.variants']),
                 $priorDue,
             );
@@ -158,11 +164,13 @@ class SaleReturnService
             }
 
             $sale = $return->sale;
-            app(OperationalLedgerPoster::class)->forget($return);
+            $poster = app(OperationalLedgerPoster::class);
+            $poster->forget($return);
             $return->delete();
 
             if ($sale) {
                 self::recalculateSaleTotals($sale);
+                $poster->syncSale($sale->fresh(['payments', 'items.product']) ?? $sale);
             }
         });
     }

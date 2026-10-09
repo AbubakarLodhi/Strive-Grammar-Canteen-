@@ -120,49 +120,32 @@ class OperationalLedgerPoster
     }
 
     /**
+     * Sale returns restore stock only. Cash / AR / sales revenue are corrected by
+     * re-syncing the parent sale to its net remaining totals — posting those
+     * settlement lines here double-subtracts when the sale JV is also updated or removed.
+     *
      * @return list<array{code: string, debit: float, credit: float, description: string}>
      */
     public function saleReturnLinePlan(
-        float $total,
+        float $total = 0,
         bool $refundToBank = false,
         bool $creditCustomer = false,
         float $cogs = 0,
         float $cashRefund = 0,
         float $receivableCredit = 0,
     ): array {
-        $total = round(max(0, $total), 2);
+        unset($total, $refundToBank, $creditCustomer, $cashRefund, $receivableCredit);
+
         $cogs = round(max(0, $cogs), 2);
-        $cashRefund = round(max(0, $cashRefund), 2);
-        $receivableCredit = round(max(0, $receivableCredit), 2);
 
-        // Backward-compatible single-settlement mode when split amounts are not provided.
-        if ($cashRefund <= 0 && $receivableCredit <= 0 && $total > 0) {
-            if ($creditCustomer) {
-                $receivableCredit = $total;
-            } else {
-                $cashRefund = $total;
-            }
+        if ($cogs <= 0) {
+            return [];
         }
 
-        if (round($cashRefund + $receivableCredit, 2) !== $total) {
-            $receivableCredit = round(max(0, $total - $cashRefund), 2);
-            $cashRefund = round(max(0, $total - $receivableCredit), 2);
-        }
-
-        $cashCode = $refundToBank ? '1010' : '1000';
-
-        $lines = [
-            ['code' => '4000', 'debit' => $total, 'credit' => 0, 'description' => 'Sales return'],
-            ['code' => $cashCode, 'debit' => 0, 'credit' => $cashRefund, 'description' => 'Cash refund'],
-            ['code' => '1100', 'debit' => 0, 'credit' => $receivableCredit, 'description' => 'Receivable reduced'],
-        ];
-
-        if ($cogs > 0) {
-            $lines[] = ['code' => FinanceLedger::INVENTORY_ACCOUNT_CODE, 'debit' => $cogs, 'credit' => 0, 'description' => 'Inventory returned'];
-            $lines[] = ['code' => FinanceLedger::COGS_ACCOUNT_CODE, 'debit' => 0, 'credit' => $cogs, 'description' => 'COGS reversal'];
-        }
-
-        return $this->compactLines($lines);
+        return $this->compactLines([
+            ['code' => FinanceLedger::INVENTORY_ACCOUNT_CODE, 'debit' => $cogs, 'credit' => 0, 'description' => 'Inventory returned'],
+            ['code' => FinanceLedger::COGS_ACCOUNT_CODE, 'debit' => 0, 'credit' => $cogs, 'description' => 'COGS reversal'],
+        ]);
     }
 
     /**
@@ -300,18 +283,13 @@ class OperationalLedgerPoster
 
     public function syncSaleReturn(SaleReturn $return, ?float $priorDue = null): void
     {
+        unset($priorDue);
+
         $return->loadMissing([
             'sale.payments',
             'items.product',
             'items.variants',
         ]);
-
-        $sale = $return->sale;
-        $total = round((float) $return->total_amount, 2);
-
-        $dueBasis = round(max(0, $priorDue ?? (float) ($sale?->due_amount ?? 0)), 2);
-        $receivableCredit = round(min($total, $dueBasis), 2);
-        $cashRefund = round(max(0, $total - $receivableCredit), 2);
 
         $cogs = round($return->items->sum(function ($item): float {
             $unitCost = (float) ($item->product?->purchase_price ?? 0);
@@ -324,14 +302,7 @@ class OperationalLedgerPoster
             $return->merchant_id,
             $return->return_date,
             'Sale return '.$return->return_no,
-            $this->saleReturnLinePlan(
-                $total,
-                $sale ? $this->documentUsesBank($sale) : false,
-                $receivableCredit > 0 && $cashRefund <= 0,
-                $cogs,
-                $cashRefund,
-                $receivableCredit,
-            ),
+            $this->saleReturnLinePlan(cogs: $cogs),
             $return->created_by,
         );
     }

@@ -6,6 +6,7 @@ use App\Models\JournalVoucher;
 use App\Models\Merchant;
 use App\Models\Purchase;
 use App\Models\Sale;
+use App\Models\SaleReturn;
 use App\Services\Finance\FinanceLedger;
 use App\Services\Finance\OperationalLedgerPoster;
 use App\Services\Inventory\CanteenStockImporter;
@@ -88,6 +89,18 @@ class FinanceRepairLedgersCommand extends Command
 
             $zeros = $this->removeZeroValueSaleVouchers($merchant->id, $poster, $dryRun);
             $this->line('  Zero-value sale vouchers removed: '.$zeros);
+
+            $saleReturns = SaleReturn::query()
+                ->where('merchant_id', $merchant->id)
+                ->with(['sale.payments', 'items.product', 'items.variants'])
+                ->get();
+
+            $this->line('  Sale returns to re-sync (inventory only): '.$saleReturns->count());
+            if (! $dryRun) {
+                foreach ($saleReturns as $saleReturn) {
+                    $poster->syncSaleReturn($saleReturn);
+                }
+            }
         }
 
         $this->components->success($dryRun ? 'Dry run complete.' : 'Ledger repair complete.');

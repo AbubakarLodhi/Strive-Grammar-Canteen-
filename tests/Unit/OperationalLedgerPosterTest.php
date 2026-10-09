@@ -116,18 +116,14 @@ class OperationalLedgerPosterTest extends TestCase
         $this->assertPlanBalances($lines);
     }
 
-    public function test_sale_return_reverses_sales(): void
+    public function test_sale_return_without_cogs_posts_no_settlement_lines(): void
     {
         $lines = $this->poster()->saleReturnLinePlan(100);
 
-        $this->assertSame('4000', $lines[0]['code']);
-        $this->assertSame(100.0, $lines[0]['debit']);
-        $this->assertSame('1000', $lines[1]['code']);
-        $this->assertSame(100.0, $lines[1]['credit']);
-        $this->assertPlanBalances($lines);
+        $this->assertSame([], $lines);
     }
 
-    public function test_sale_return_credits_receivable_before_cash_and_restores_inventory(): void
+    public function test_sale_return_only_restores_inventory(): void
     {
         $lines = $this->poster()->saleReturnLinePlan(
             total: 400,
@@ -138,11 +134,12 @@ class OperationalLedgerPosterTest extends TestCase
             receivableCredit: 300,
         );
 
-        $this->assertSame(400.0, collect($lines)->firstWhere('code', '4000')['debit']);
-        $this->assertSame(100.0, collect($lines)->firstWhere('code', '1000')['credit']);
-        $this->assertSame(300.0, collect($lines)->firstWhere('code', '1100')['credit']);
+        $this->assertCount(2, $lines);
         $this->assertSame(150.0, collect($lines)->firstWhere('code', FinanceLedger::INVENTORY_ACCOUNT_CODE)['debit']);
         $this->assertSame(150.0, collect($lines)->firstWhere('code', FinanceLedger::COGS_ACCOUNT_CODE)['credit']);
+        $this->assertNull(collect($lines)->firstWhere('code', '4000'));
+        $this->assertNull(collect($lines)->firstWhere('code', '1000'));
+        $this->assertNull(collect($lines)->firstWhere('code', '1100'));
         $this->assertPlanBalances($lines);
     }
 

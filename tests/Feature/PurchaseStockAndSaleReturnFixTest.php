@@ -205,15 +205,57 @@ class PurchaseStockAndSaleReturnFixTest extends TestCase
             ->filter(fn (JournalVoucherLine $line) => $line->ledgerAccount?->code === FinanceLedger::CASH_ACCOUNT_CODE)
             ->sum('credit');
 
-        $this->assertSame(200.0, $arCredit);
+        // Return voucher must not touch cash/AR — parent sale re-sync handles settlement.
+        $this->assertSame(0.0, $arCredit);
         $this->assertSame(0.0, $cashCredit);
 
         $cashAfter = $this->postedAccountBalance($merchant->id, FinanceLedger::CASH_ACCOUNT_CODE);
         $arAfter = $this->postedAccountBalance($merchant->id, '1100');
 
         $this->assertSame($cashBefore, $cashAfter);
+        $this->assertSame(100.0, $arAfter);
         $this->assertLessThan($arBefore, $arAfter);
         $this->assertSame(8.0, ProductStockAvailability::variantStock($variant->id, $branch->id));
+    }
+
+    public function test_full_cash_sale_return_does_not_double_subtract_cash_after_repair(): void
+    {
+        [$merchant, $branch, $variant] = $this->seedStockedProduct(quantity: 10);
+        $sale = $this->createPostedSale($merchant, $branch, $variant, quantity: 4, paidAmount: 400);
+
+        $cashAfterSale = $this->postedAccountBalance($merchant->id, FinanceLedger::CASH_ACCOUNT_CODE);
+        $salesAfterSale = $this->postedAccountBalance($merchant->id, '4000');
+
+        SaleReturnService::createReturn($sale->fresh(['items.product', 'items.variants', 'payments']), [
+            'return_date' => now()->toDateString(),
+            'reason' => 'Full return',
+            'items' => [
+                [
+                    'sale_item_id' => $sale->items()->first()->id,
+                    'quantity' => 4,
+                ],
+            ],
+        ]);
+
+        $sale->refresh();
+        $this->assertSame(0.0, (float) $sale->total_amount);
+
+        $cashAfterReturn = $this->postedAccountBalance($merchant->id, FinanceLedger::CASH_ACCOUNT_CODE);
+        $salesAfterReturn = $this->postedAccountBalance($merchant->id, '4000');
+
+        // Cash/sales should reverse once (back to pre-sale), not twice.
+        $this->assertSame($cashAfterSale - 400.0, $cashAfterReturn);
+        $this->assertSame($salesAfterSale - 400.0, $salesAfterReturn);
+
+        $this->artisan('finance:repair-ledgers', [
+            '--merchant' => $merchant->id,
+        ])->assertSuccessful();
+
+        $cashAfterRepair = $this->postedAccountBalance($merchant->id, FinanceLedger::CASH_ACCOUNT_CODE);
+        $salesAfterRepair = $this->postedAccountBalance($merchant->id, '4000');
+
+        $this->assertSame($cashAfterReturn, $cashAfterRepair);
+        $this->assertSame($salesAfterReturn, $salesAfterRepair);
     }
 
     public function test_creating_vendor_creates_party_ledger_account(): void
