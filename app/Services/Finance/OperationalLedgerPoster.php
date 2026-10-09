@@ -96,9 +96,11 @@ class OperationalLedgerPoster
     ): array {
         $total = round(max(0, $total), 2);
         $expenseCode = $expenseCode ?: '5100';
-        $paidFromCode = $this->nonCashSettlementCode(
-            $paidFromCode ?: '1010'
-        );
+        // Honor the selected paid-from account (Cash in Hand or a bank).
+        $paidFromCode = trim((string) ($paidFromCode ?: '1010'));
+        if ($paidFromCode === '') {
+            $paidFromCode = '1010';
+        }
 
         return $this->compactLines([
             ['code' => $expenseCode, 'debit' => $total, 'credit' => 0, 'description' => 'Operating expense'],
@@ -251,7 +253,7 @@ class OperationalLedgerPoster
         $expense->loadMissing(['expenseAccount', 'paidFromAccount']);
 
         $expenseCode = $expense->expenseAccount?->code ?: '5100';
-        $paidFromCode = $this->nonCashSettlementCode($expense->paidFromAccount?->code ?: '1010');
+        $paidFromCode = $expense->paidFromAccount?->code ?: '1010';
 
         $this->postPlan(
             $expense,
@@ -404,20 +406,6 @@ class OperationalLedgerPoster
         }
 
         return false;
-    }
-
-    /**
-     * Cash in Hand is reserved for sales / sale returns. Remap any other settlement to bank.
-     */
-    private function nonCashSettlementCode(?string $code): string
-    {
-        $code = trim((string) $code);
-
-        if ($code === '' || $code === FinanceLedger::CASH_ACCOUNT_CODE) {
-            return '1010';
-        }
-
-        return $code;
     }
 
     /**

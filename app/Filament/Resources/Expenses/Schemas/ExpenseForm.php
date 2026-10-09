@@ -2,7 +2,6 @@
 
 namespace App\Filament\Resources\Expenses\Schemas;
 
-use App\Enums\LedgerAccountType;
 use App\Models\Branch;
 use App\Models\LedgerAccount;
 use App\Models\Merchant;
@@ -42,14 +41,15 @@ class ExpenseForm
                         ->required()
                         ->displayFormat('d/m/Y'),
 
-                    Select::make('expense_account_id')
+                    TextInput::make('expense_account_name')
                         ->label('Expense account')
                         ->required()
-                        ->searchable()
-                        ->preload()
-                        ->native(false)
-                        ->options(fn (): array => self::expenseAccountOptions())
-                        ->helperText('Ledger expense head for this voucher.'),
+                        ->maxLength(255)
+                        ->dehydrated()
+                        ->helperText('Type the expense name. It will be created in the ledger if it does not exist yet.'),
+
+                    Hidden::make('expense_account_id')
+                        ->dehydrated(),
 
                     Select::make('paid_from_account_id')
                         ->label('Paid from')
@@ -308,28 +308,6 @@ class ExpenseForm
 
         $set('subtotal', $subtotal);
         $set('total_amount', $subtotal - $discount + $tax);
-    }
-
-    /**
-     * @return array<string, string>
-     */
-    private static function expenseAccountOptions(): array
-    {
-        $merchantId = self::merchantId();
-        if (! $merchantId) {
-            return [];
-        }
-
-        return LedgerAccount::query()
-            ->where('merchant_id', $merchantId)
-            ->where('is_active', true)
-            ->where('type', LedgerAccountType::Expense)
-            ->orderBy('code')
-            ->get()
-            ->mapWithKeys(fn ($account) => [
-                $account->id => trim(($account->code ? $account->code.' — ' : '').$account->name),
-            ])
-            ->all();
     }
 
     /**

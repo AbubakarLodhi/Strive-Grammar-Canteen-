@@ -245,6 +245,75 @@ class FinanceLedger
         return $account;
     }
 
+    public function ensureExpenseAccountByName(string $merchantId, string $name): LedgerAccount
+    {
+        $name = trim($name);
+
+        if ($name === '') {
+            throw ValidationException::withMessages([
+                'expense_account_name' => 'Enter an expense account name.',
+            ]);
+        }
+
+        $merchant = Merchant::query()->find($merchantId);
+        if ($merchant) {
+            $this->provisionDefaultAccounts($merchant);
+        }
+
+        $existing = LedgerAccount::query()
+            ->withTrashed()
+            ->where('merchant_id', $merchantId)
+            ->where('type', LedgerAccountType::Expense)
+            ->where('is_system', false)
+            ->whereRaw('LOWER(name) = ?', [mb_strtolower($name)])
+            ->first();
+
+        if ($existing) {
+            if ($existing->trashed()) {
+                $existing->restore();
+            }
+
+            if (! $existing->is_active) {
+                $existing->forceFill(['is_active' => true])->save();
+            }
+
+            if ($existing->name !== $name) {
+                $existing->forceFill(['name' => $name])->save();
+            }
+
+            return $existing->fresh() ?? $existing;
+        }
+
+        return LedgerAccount::query()->create([
+            'merchant_id' => $merchantId,
+            'code' => $this->nextExpenseAccountCode($merchantId),
+            'name' => $name,
+            'type' => LedgerAccountType::Expense,
+            'is_bank' => false,
+            'is_system' => false,
+            'is_active' => true,
+            'opening_balance' => 0,
+        ]);
+    }
+
+    public function nextExpenseAccountCode(string $merchantId): string
+    {
+        $used = LedgerAccount::query()
+            ->withTrashed()
+            ->where('merchant_id', $merchantId)
+            ->pluck('code')
+            ->flip()
+            ->all();
+
+        for ($code = 5300; $code <= 5999; $code++) {
+            if (! isset($used[(string) $code])) {
+                return (string) $code;
+            }
+        }
+
+        return $this->nextLedgerAccountCode($merchantId);
+    }
+
     public function ensureVendorPayableAccount(Vendor $vendor): LedgerAccount
     {
         if (CanteenStockImporter::isOpeningStockVendor($vendor)) {

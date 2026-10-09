@@ -5,6 +5,7 @@ namespace App\Filament\Resources\Expenses\Pages;
 use App\Filament\Resources\Expenses\ExpenseResource;
 use App\Models\Branch;
 use App\Models\Merchant;
+use App\Services\Finance\FinanceLedger;
 use App\Services\Finance\OperationalLedgerPoster;
 use Filament\Facades\Filament;
 use Filament\Resources\Pages\CreateRecord;
@@ -45,6 +46,13 @@ class CreateExpense extends CreateRecord
              |-------------------------------- */
             $data['business_id'] = Branch::where('id', $data['branch_id'])
                 ->value('business_id');
+
+            $expenseAccountName = trim((string) ($data['expense_account_name'] ?? ''));
+            unset($data['expense_account_name']);
+
+            $data['expense_account_id'] = app(FinanceLedger::class)
+                ->ensureExpenseAccountByName((string) $data['merchant_id'], $expenseAccountName)
+                ->id;
 
             /* --------------------------------
              | Totals

@@ -4,6 +4,7 @@ namespace App\Filament\Resources\Expenses\Pages;
 
 use App\Filament\Resources\Expenses\ExpenseResource;
 use App\Models\Branch;
+use App\Services\Finance\FinanceLedger;
 use App\Services\Finance\OperationalLedgerPoster;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\ViewAction;
@@ -45,6 +46,9 @@ class EditExpense extends EditRecord
 
     protected function mutateFormDataBeforeFill(array $data): array
     {
+        $this->record->loadMissing('expenseAccount');
+
+        $data['expense_account_name'] = (string) ($this->record->expenseAccount?->name ?? '');
         $data['items'] = $this->record->items->map(fn ($item) => [
             'description' => $item->description,
             'quantity' => $item->quantity,
@@ -65,6 +69,14 @@ class EditExpense extends EditRecord
          |-------------------------------- */
         $data['business_id'] = Branch::where('id', $data['branch_id'])
             ->value('business_id');
+
+        $expenseAccountName = trim((string) ($data['expense_account_name'] ?? ''));
+        unset($data['expense_account_name']);
+
+        $merchantId = (string) ($data['merchant_id'] ?? $this->record->merchant_id);
+        $data['expense_account_id'] = app(FinanceLedger::class)
+            ->ensureExpenseAccountByName($merchantId, $expenseAccountName)
+            ->id;
 
         $subtotal = collect($items)->sum(fn ($i) => (float) ($i['line_total'] ?? 0));
         $discount = (float) ($data['discount'] ?? 0);

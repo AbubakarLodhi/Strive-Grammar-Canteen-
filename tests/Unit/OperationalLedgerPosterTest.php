@@ -94,7 +94,7 @@ class OperationalLedgerPosterTest extends TestCase
         $this->assertPlanBalances($lines);
     }
 
-    public function test_expense_debits_operating_expenses_and_credits_bank_not_cash(): void
+    public function test_expense_defaults_to_crediting_bank(): void
     {
         $lines = $this->poster()->expenseLinePlan(250.5);
 
@@ -103,6 +103,33 @@ class OperationalLedgerPosterTest extends TestCase
             ['code' => '1010', 'debit' => 0, 'credit' => 250.5, 'description' => 'Expense paid'],
         ], $lines);
 
+        $this->assertPlanBalances($lines);
+    }
+
+    public function test_expense_paid_from_cash_in_hand_credits_cash_not_bank(): void
+    {
+        $lines = $this->poster()->expenseLinePlan(
+            total: 100,
+            expenseCode: '5300',
+            paidFromCode: FinanceLedger::CASH_ACCOUNT_CODE,
+        );
+
+        $this->assertSame(FinanceLedger::CASH_ACCOUNT_CODE, $lines[1]['code']);
+        $this->assertSame(100.0, $lines[1]['credit']);
+        $this->assertNull(collect($lines)->firstWhere('code', '1010'));
+        $this->assertPlanBalances($lines);
+    }
+
+    public function test_expense_paid_from_bank_credits_bank(): void
+    {
+        $lines = $this->poster()->expenseLinePlan(
+            total: 75,
+            expenseCode: '5300',
+            paidFromCode: '1010',
+        );
+
+        $this->assertSame('1010', $lines[1]['code']);
+        $this->assertSame(75.0, $lines[1]['credit']);
         $this->assertPlanBalances($lines);
     }
 
