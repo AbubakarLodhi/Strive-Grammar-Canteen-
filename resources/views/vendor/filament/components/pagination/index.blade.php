@@ -58,41 +58,56 @@
         </span>
     @endif
 
-    @if (count($pageOptions) > 1)
-        <div class="fi-pagination-records-per-page-select-ctn">
-            <label class="fi-pagination-records-per-page-select fi-compact">
-                <x-filament::input.wrapper>
-                    <x-filament::input.select
-                        :wire:model.live="$currentPageOptionProperty"
-                    >
-                        @foreach ($pageOptions as $option)
-                            <option value="{{ $option }}">
-                                {{ $option === 'all' ? __('filament::components/pagination.fields.records_per_page.options.all') : $option }}
-                            </option>
-                        @endforeach
-                    </x-filament::input.select>
-                </x-filament::input.wrapper>
+    @php
+        $paginationTotalLabel = method_exists($this, 'getTablePaginationTotalLabel')
+            ? $this->getTablePaginationTotalLabel()
+            : null;
+        $hasPageOptions = count($pageOptions) > 1;
+    @endphp
 
-                <span class="fi-sr-only">
-                    {{ __('filament::components/pagination.fields.records_per_page.label') }}
+    @if ($hasPageOptions || filled($paginationTotalLabel))
+        <div class="fi-pagination-records-per-page-select-ctn flex items-center gap-3">
+            @if (filled($paginationTotalLabel))
+                <span class="fi-pagination-table-total text-sm font-semibold text-gray-700 whitespace-nowrap dark:text-gray-200">
+                    {{ $paginationTotalLabel }}
                 </span>
-            </label>
+            @endif
 
-            <label class="fi-pagination-records-per-page-select">
-                <x-filament::input.wrapper
-                    :prefix="__('filament::components/pagination.fields.records_per_page.label')"
-                >
-                    <x-filament::input.select
-                        :wire:model.live="$currentPageOptionProperty"
+            @if ($hasPageOptions)
+                <label class="fi-pagination-records-per-page-select fi-compact">
+                    <x-filament::input.wrapper>
+                        <x-filament::input.select
+                            :wire:model.live="$currentPageOptionProperty"
+                        >
+                            @foreach ($pageOptions as $option)
+                                <option value="{{ $option }}">
+                                    {{ $option === 'all' ? __('filament::components/pagination.fields.records_per_page.options.all') : $option }}
+                                </option>
+                            @endforeach
+                        </x-filament::input.select>
+                    </x-filament::input.wrapper>
+
+                    <span class="fi-sr-only">
+                        {{ __('filament::components/pagination.fields.records_per_page.label') }}
+                    </span>
+                </label>
+
+                <label class="fi-pagination-records-per-page-select">
+                    <x-filament::input.wrapper
+                        :prefix="__('filament::components/pagination.fields.records_per_page.label')"
                     >
-                        @foreach ($pageOptions as $option)
-                            <option value="{{ $option }}">
-                                {{ $option === 'all' ? __('filament::components/pagination.fields.records_per_page.options.all') : $option }}
-                            </option>
-                        @endforeach
-                    </x-filament::input.select>
-                </x-filament::input.wrapper>
-            </label>
+                        <x-filament::input.select
+                            :wire:model.live="$currentPageOptionProperty"
+                        >
+                            @foreach ($pageOptions as $option)
+                                <option value="{{ $option }}">
+                                    {{ $option === 'all' ? __('filament::components/pagination.fields.records_per_page.options.all') : $option }}
+                                </option>
+                            @endforeach
+                        </x-filament::input.select>
+                    </x-filament::input.wrapper>
+                </label>
+            @endif
         </div>
     @endif
 

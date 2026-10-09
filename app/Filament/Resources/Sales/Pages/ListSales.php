@@ -24,6 +24,23 @@ class ListSales extends ListRecords
         return $query;
     }
 
+    /**
+     * Shown next to the Per page control in the shared pagination footer.
+     */
+    public function getTablePaginationTotalLabel(): ?string
+    {
+        $query = $this->getFilteredTableQuery();
+
+        if (! $query) {
+            return null;
+        }
+
+        $table = $query->getModel()->getTable();
+        $total = (float) $query->clone()->reorder()->sum("{$table}.total_amount");
+
+        return 'Total sale: PKR '.number_format($total, 2);
+    }
+
     protected function getHeaderActions(): array
     {
         return [
