@@ -3,6 +3,7 @@
     'extremeLinks' => false,
     'paginator',
     'pageOptions' => [],
+    'totalLabel' => null,
 ])
 
 @php
@@ -10,6 +11,17 @@
 
     $isRtl = __('filament-panels::layout.direction') === 'rtl';
     $isSimple = ! $paginator instanceof \Illuminate\Pagination\LengthAwarePaginator;
+
+    // Prefer an explicit prop (passed from the Livewire table view). Falling back to
+    // method_exists($this, ...) is unreliable inside Blade components on production
+    // when $this is the anonymous component instead of the Livewire page.
+    $paginationTotalLabel = $totalLabel;
+
+    if (blank($paginationTotalLabel) && method_exists($this, 'getTablePaginationTotalLabel')) {
+        $paginationTotalLabel = $this->getTablePaginationTotalLabel();
+    }
+
+    $hasPageOptions = count($pageOptions) > 1;
 @endphp
 
 <nav
@@ -57,13 +69,6 @@
             }}
         </span>
     @endif
-
-    @php
-        $paginationTotalLabel = method_exists($this, 'getTablePaginationTotalLabel')
-            ? $this->getTablePaginationTotalLabel()
-            : null;
-        $hasPageOptions = count($pageOptions) > 1;
-    @endphp
 
     @if ($hasPageOptions || filled($paginationTotalLabel))
         <div class="fi-pagination-records-per-page-select-ctn flex items-center gap-3">

@@ -2472,12 +2472,16 @@
                 @php
                     $hasExtremePaginationLinks = $hasExtremePaginationLinks();
                     $paginationPageOptions = $getPaginationPageOptions();
+                    $paginationTotalLabel = method_exists($this, 'getTablePaginationTotalLabel')
+                        ? $this->getTablePaginationTotalLabel()
+                        : null;
                 @endphp
 
                 <x-filament::pagination
                     :extreme-links="$hasExtremePaginationLinks"
                     :page-options="$paginationPageOptions"
                     :paginator="$records"
+                    :total-label="$paginationTotalLabel"
                 />
             @endif
 
