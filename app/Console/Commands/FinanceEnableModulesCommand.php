@@ -119,6 +119,8 @@ class FinanceEnableModulesCommand extends Command
         if ($rows !== []) {
             DB::table('merchant_permission_modules')->insert($rows);
         }
+
+        PermissionModule::forgetMerchantCache($merchant->id);
     }
 
     private function grantFinancePermissions(Merchant $merchant): void

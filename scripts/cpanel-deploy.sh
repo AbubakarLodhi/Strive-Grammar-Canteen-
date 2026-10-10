@@ -113,17 +113,24 @@ else
   echo "WARNING: composer not found and vendor/ missing. Upload vendor.zip to public_html."
 fi
 
-# Cache only — migrations run here on deploy when SSH/cPanel Terminal is unavailable.
+# Migrations + light caches. Ledger repair is heavy (re-posts every sale/purchase)
+# and must not run on every deploy — set RUN_LEDGER_REPAIR=1 in deploy/config when needed.
 if [[ -f artisan && -f .env ]]; then
   $PHP_BIN artisan migrate --force --no-interaction
   $PHP_BIN artisan finance:enable-modules --no-interaction || true
-  $PHP_BIN artisan finance:repair-ledgers --no-interaction || true
+  if [[ "${RUN_LEDGER_REPAIR:-0}" == "1" ]]; then
+    echo "Running finance:repair-ledgers (RUN_LEDGER_REPAIR=1)..."
+    $PHP_BIN artisan finance:repair-ledgers --no-interaction || true
+  else
+    echo "Skipping finance:repair-ledgers (set RUN_LEDGER_REPAIR=1 to enable)."
+  fi
   $PHP_BIN artisan storage:link 2>/dev/null || true
   $PHP_BIN artisan optimize:clear || true
   $PHP_BIN artisan config:cache || true
   $PHP_BIN artisan route:cache || true
   $PHP_BIN artisan view:cache || true
   $PHP_BIN artisan filament:optimize 2>/dev/null || true
+  $PHP_BIN artisan event:cache 2>/dev/null || true
 fi
 
 echo "Deploy finished."

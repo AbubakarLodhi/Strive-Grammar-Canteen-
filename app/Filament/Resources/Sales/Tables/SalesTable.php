@@ -32,6 +32,7 @@ use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
 
 class SalesTable
@@ -84,20 +85,13 @@ class SalesTable
                     ->badge()
                     ->color('primary')
                     ->getStateUsing(function (Sale $record) {
-                        $names = $record->items()
-                            ->join('businesses', 'businesses.id', '=', 'sale_items.business_id')
-                            ->select('businesses.name')
-                            ->distinct()
-                            ->pluck('name');
+                        $names = $record->items
+                            ->map(fn ($item) => $item->business?->name)
+                            ->filter()
+                            ->unique()
+                            ->values();
 
-                        $visible = $names->take(2);
-                        $hidden = $names->count() - $visible->count();
-
-                        if ($hidden > 0) {
-                            $visible->push('+'.$hidden);
-                        }
-
-                        return $visible->toArray();
+                        return self::badgePreview($names);
                     })
                     ->sortable(false)
                     ->toggleable(),
@@ -107,20 +101,13 @@ class SalesTable
                     ->badge()
                     ->color('success')
                     ->getStateUsing(function (Sale $record) {
-                        $names = $record->items()
-                            ->join('branches', 'branches.id', '=', 'sale_items.branch_id')
-                            ->select('branches.name')
-                            ->distinct()
-                            ->pluck('name');
+                        $names = $record->items
+                            ->map(fn ($item) => $item->branch?->name)
+                            ->filter()
+                            ->unique()
+                            ->values();
 
-                        $visible = $names->take(2);
-                        $hidden = $names->count() - $visible->count();
-
-                        if ($hidden > 0) {
-                            $visible->push('+'.$hidden);
-                        }
-
-                        return $visible->toArray();
+                        return self::badgePreview($names);
                     })
                     ->sortable(false)
                     ->toggleable(),
@@ -136,14 +123,9 @@ class SalesTable
                             ->unique()
                             ->values();
 
-                        $visible = $names->take(2);
-                        $hidden = $names->count() - $visible->count();
+                        $preview = self::badgePreview($names);
 
-                        if ($hidden > 0) {
-                            $visible->push('+'.$hidden);
-                        }
-
-                        return $visible->isNotEmpty() ? $visible->toArray() : ['—'];
+                        return $preview !== [] ? $preview : ['—'];
                     })
                     ->toggleable(),
 
@@ -721,5 +703,21 @@ class SalesTable
         }
 
         return false;
+    }
+
+    /**
+     * @param  Collection<int, mixed>  $names
+     * @return list<string>
+     */
+    private static function badgePreview($names): array
+    {
+        $visible = $names->take(2);
+        $hidden = $names->count() - $visible->count();
+
+        if ($hidden > 0) {
+            $visible->push('+'.$hidden);
+        }
+
+        return $visible->values()->all();
     }
 }

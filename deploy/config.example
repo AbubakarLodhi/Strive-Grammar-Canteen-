@@ -13,3 +13,7 @@ PHP_BIN="/opt/cpanel/ea-php83/root/usr/bin/php"
 
 # Optional if composer is not on PATH:
 # COMPOSER_BIN="$HOME/bin/composer"
+
+# Set to 1 only when you intentionally want a full ledger rebuild after deploy.
+# Leaving this off keeps deploys fast and avoids MySQL overload.
+# RUN_LEDGER_REPAIR=0

@@ -90,6 +90,8 @@ class SaleResource extends Resource
             ->with([
                 'returns:id,sale_id,subtotal,total_discount,total_tax,total_amount',
                 'items.product:id,name,sku',
+                'items.business:id,name',
+                'items.branch:id,name',
                 'creditReminders:id,sale_id,is_active,next_send_at,last_sent_at,remind_at',
             ]);
         $user = Filament::auth()->user();

@@ -60,6 +60,8 @@ class DemoMerchantAccess
         if ($rows !== []) {
             DB::table('merchant_permission_modules')->insert($rows);
         }
+
+        PermissionModule::forgetMerchantCache($merchant->id);
     }
 
     private function assignAdminRoleWithAllPermissions(Merchant $merchant): void
