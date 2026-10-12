@@ -509,7 +509,7 @@ class SalesTable
         // Make sure relationships are loaded
         $sale->loadMissing('items.product', 'items.variants.variant');
 
-        $summary = self::prefillReturnSummary($sale);
+        $summary = SaleReturnService::summaryFor($sale);
 
         return [
             DatePicker::make('return_date')
@@ -519,33 +519,7 @@ class SalesTable
             Textarea::make('reason'),
 
             Repeater::make('items')
-                ->default(
-                    $sale->items->map(function ($item) {
-
-                        $variant = $item->variants->first();
-                        $variantModel = $variant?->variant;
-
-                        $variantLabel = $variantModel
-                            ? (
-                                $variantModel->name
-                                ?? $variantModel->sku
-                                ?? $variantModel->option_values
-                                ?? substr($variantModel->id, 0, 8)
-                            )
-                            : '-';
-
-                        return [
-                            'sale_item_id' => $item->id,
-                            'product_name' => $item->product?->name ?? 'Product',
-                            'variant_name' => $variantLabel,
-                            'max_quantity' => max(0, (int) $item->quantity),
-                            'quantity' => max(0, (int) $item->quantity),
-                            'unit_price' => $item->unit_price,
-                            'discount' => $item->discount ?? 0,
-                            'tax' => $item->tax ?? 0,
-                        ];
-                    })->toArray()
-                )
+                ->default(SaleReturnService::defaultReturnItemsFor($sale))
                 ->addable(false)
                 ->deletable(false)
                 ->reorderable(false)
@@ -630,7 +604,7 @@ class SalesTable
         ];
     }
 
-    private static function recalcReturnTotals(callable $set, callable $get): void
+    public static function recalcReturnTotals(callable $set, callable $get): void
     {
         $items = $get('items') ?? [];
 
@@ -661,48 +635,9 @@ class SalesTable
         $set('total_amount', round($subtotal - $totalDiscount + $totalTax, 2));
     }
 
-    private static function prefillReturnSummary(Sale $sale): array
-    {
-        $subtotal = 0.0;
-        $totalDiscount = 0.0;
-        $totalTax = 0.0;
-
-        foreach ($sale->items as $item) {
-            $qty = (float) ($item->quantity ?? 0);
-            $unit = (float) ($item->unit_price ?? 0);
-            $lineSubtotal = $qty * $unit;
-
-            $discountRate = (float) ($item->discount ?? 0);
-            $taxRate = (float) ($item->tax ?? 0);
-
-            $discountAmount = $lineSubtotal * ($discountRate / 100);
-            $taxableAmount = max(0, $lineSubtotal - $discountAmount);
-            $taxAmount = $taxableAmount * ($taxRate / 100);
-
-            $subtotal += $lineSubtotal;
-            $totalDiscount += $discountAmount;
-            $totalTax += $taxAmount;
-        }
-
-        return [
-            'subtotal' => round($subtotal, 2),
-            'total_discount' => round($totalDiscount, 2),
-            'total_tax' => round($totalTax, 2),
-            'total_amount' => round($subtotal - $totalDiscount + $totalTax, 2),
-        ];
-    }
-
     private static function hasReturnableItems(Sale $sale): bool
     {
-        foreach ($sale->items as $item) {
-            $itemQty = (int) ($item->quantity ?? 0);
-            $variantQty = (int) $item->variants->sum('quantity');
-            if (max($itemQty, $variantQty) > 0) {
-                return true;
-            }
-        }
-
-        return false;
+        return SaleReturnService::hasReturnableItems($sale);
     }
 
     /**

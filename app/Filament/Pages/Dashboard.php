@@ -5,7 +5,6 @@ namespace App\Filament\Pages;
 use App\Models\Branch;
 use App\Models\Business;
 use App\Models\Merchant;
-use App\Models\ProductVariant;
 use App\Models\User;
 use BackedEnum;
 use Filament\Actions\Action;
@@ -62,7 +61,7 @@ class Dashboard extends BaseDashboard
             ->columns(1)
             ->components([
                 Section::make('Filters')
-                    ->description('Refine dashboard analytics by business, branch, product variant, and date range.')
+                    ->description('Refine dashboard analytics by business, branch, and date range.')
                     ->extraAttributes(['class' => 'dashboard-filters-section'])
                     ->schema([
                         Select::make('business_id')
@@ -98,10 +97,7 @@ class Dashboard extends BaseDashboard
                                     ->toArray();
                             })
                             ->live()
-                            ->afterStateUpdated(function (callable $set) {
-                                $set('branch_id', null);
-                                $set('product_variant_ids', []);
-                            }),
+                            ->afterStateUpdated(fn (callable $set) => $set('branch_id', null)),
 
                         Select::make('branch_id')
                             ->label('Branch')
@@ -139,49 +135,6 @@ class Dashboard extends BaseDashboard
                                     ->orderBy('name')
                                     ->pluck('name', 'id')
                                     ->toArray();
-                            })
-                            ->afterStateUpdated(fn (callable $set) => $set('product_variant_ids', [])),
-
-                        Select::make('product_variant_ids')
-                            ->label('Product Variant')
-                            ->placeholder('All variants')
-                            ->multiple()
-                            ->searchable()
-                            ->preload()
-                            ->optionsLimit(500)
-                            ->wrapOptionLabels(false)
-                            ->extraAttributes([
-                                'class' => 'dashboard-product-variant-select',
-                            ])
-                            ->extraFieldWrapperAttributes(fn (callable $get): array => [
-                                'class' => 'dashboard-product-variant-select',
-                                'data-dashboard-option-values' => json_encode(array_map(
-                                    'strval',
-                                    array_keys(self::productVariantFilterOptions($get)),
-                                )),
-                            ])
-                            ->options(fn (callable $get): array => self::productVariantFilterOptions($get))
-                            ->getOptionLabelsUsing(function (array $values): array {
-                                if ($values === []) {
-                                    return [];
-                                }
-
-                                return ProductVariant::query()
-                                    ->withoutTrashed()
-                                    ->whereIn('product_variants.id', $values)
-                                    ->join('products', 'products.id', '=', 'product_variants.product_id')
-                                    ->whereNull('products.deleted_at')
-                                    ->select([
-                                        'product_variants.id',
-                                        'product_variants.name',
-                                        'product_variants.sku',
-                                        'products.name as product_name',
-                                    ])
-                                    ->get()
-                                    ->mapWithKeys(fn (ProductVariant $variant): array => [
-                                        $variant->id => self::productVariantFilterLabel($variant),
-                                    ])
-                                    ->all();
                             }),
 
                         DatePicker::make('date_from')
@@ -223,71 +176,5 @@ class Dashboard extends BaseDashboard
                     ])
                     ->columnSpanFull(),
             ]);
-    }
-
-    /**
-     * @return array<string, string>
-     */
-    private static function productVariantFilterOptions(callable $get): array
-    {
-        $user = Filament::auth()->user();
-
-        $merchantId = match (true) {
-            $user instanceof Merchant => $user->id,
-            $user instanceof User => $user->merchant_id,
-            default => null,
-        };
-
-        if (! $merchantId) {
-            return [];
-        }
-
-        $query = ProductVariant::query()
-            ->withoutTrashed()
-            ->where('product_variants.merchant_id', $merchantId)
-            ->where('product_variants.is_active', true)
-            ->join('products', 'products.id', '=', 'product_variants.product_id')
-            ->whereNull('products.deleted_at')
-            ->select([
-                'product_variants.id',
-                'product_variants.name',
-                'product_variants.sku',
-                'products.name as product_name',
-            ]);
-
-        if ($businessId = $get('business_id')) {
-            $query->whereHas('product.branches', fn ($q) => $q->where('branches.business_id', $businessId)
-                ->whereNull('branches.deleted_at')
-            );
-        }
-
-        if ($branchId = $get('branch_id')) {
-            $query->whereHas('product.branches', fn ($q) => $q->where('branches.id', $branchId)
-                ->whereNull('branches.deleted_at')
-            );
-        }
-
-        if ($user instanceof User) {
-            $query->whereHas('product.branches.users', fn ($q) => $q->where('users.id', $user->id));
-            $query->whereHas('product.branches', fn ($q) => $q->whereNull('branches.deleted_at'));
-        }
-
-        return $query
-            ->orderBy('products.name')
-            ->orderBy('product_variants.name')
-            ->get()
-            ->mapWithKeys(fn (ProductVariant $variant): array => [
-                $variant->id => self::productVariantFilterLabel($variant),
-            ])
-            ->all();
-    }
-
-    private static function productVariantFilterLabel(ProductVariant $variant): string
-    {
-        return trim(
-            ($variant->product_name ? $variant->product_name.' - ' : '')
-            .($variant->name ?: ($variant->sku ?: (string) $variant->id))
-            .($variant->sku ? ' ('.$variant->sku.')' : '')
-        );
     }
 }

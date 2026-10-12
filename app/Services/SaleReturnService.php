@@ -12,9 +12,9 @@ use Illuminate\Support\Str;
 
 class SaleReturnService
 {
-    public static function createReturn(Sale $sale, array $data): void
+    public static function createReturn(Sale $sale, array $data): SaleReturn
     {
-        DB::transaction(function () use ($sale, $data) {
+        return DB::transaction(function () use ($sale, $data) {
 
             $sale->loadMissing('items.product', 'items.variants', 'payments');
 
@@ -145,7 +145,98 @@ class SaleReturnService
                 $return->fresh(['sale.payments', 'items.product', 'items.variants']),
                 $priorDue,
             );
+
+            return $return;
         });
+    }
+
+    /**
+     * Default "items to return" rows for a sale's return form, one per sale
+     * line, pre-filled at the full remaining (not-yet-returned) quantity.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public static function defaultReturnItemsFor(Sale $sale): array
+    {
+        $sale->loadMissing('items.product', 'items.variants.variant');
+
+        return $sale->items->map(function (SaleItem $item) {
+            $variant = $item->variants->first();
+            $variantModel = $variant?->variant;
+
+            $variantLabel = $variantModel
+                ? (
+                    $variantModel->name
+                    ?? $variantModel->sku
+                    ?? $variantModel->option_values
+                    ?? substr($variantModel->id, 0, 8)
+                )
+                : '-';
+
+            return [
+                'sale_item_id' => $item->id,
+                'product_id' => $item->product_id,
+                'product_name' => $item->product?->name ?? 'Product',
+                'variant_name' => $variantLabel,
+                'max_quantity' => max(0, (int) $item->quantity),
+                'quantity' => max(0, (int) $item->quantity),
+                'unit_price' => $item->unit_price,
+                'discount' => $item->discount ?? 0,
+                'tax' => $item->tax ?? 0,
+            ];
+        })->toArray();
+    }
+
+    /**
+     * @return array{subtotal: float, total_discount: float, total_tax: float, total_amount: float}
+     */
+    public static function summaryFor(Sale $sale): array
+    {
+        $sale->loadMissing('items');
+
+        $subtotal = 0.0;
+        $totalDiscount = 0.0;
+        $totalTax = 0.0;
+
+        foreach ($sale->items as $item) {
+            $qty = (float) ($item->quantity ?? 0);
+            $unit = (float) ($item->unit_price ?? 0);
+            $lineSubtotal = $qty * $unit;
+
+            $discountRate = (float) ($item->discount ?? 0);
+            $taxRate = (float) ($item->tax ?? 0);
+
+            $discountAmount = $lineSubtotal * ($discountRate / 100);
+            $taxableAmount = max(0, $lineSubtotal - $discountAmount);
+            $taxAmount = $taxableAmount * ($taxRate / 100);
+
+            $subtotal += $lineSubtotal;
+            $totalDiscount += $discountAmount;
+            $totalTax += $taxAmount;
+        }
+
+        return [
+            'subtotal' => round($subtotal, 2),
+            'total_discount' => round($totalDiscount, 2),
+            'total_tax' => round($totalTax, 2),
+            'total_amount' => round($subtotal - $totalDiscount + $totalTax, 2),
+        ];
+    }
+
+    public static function hasReturnableItems(Sale $sale): bool
+    {
+        $sale->loadMissing('items.variants');
+
+        foreach ($sale->items as $item) {
+            $itemQty = (int) ($item->quantity ?? 0);
+            $variantQty = (int) $item->variants->sum('quantity');
+
+            if (max($itemQty, $variantQty) > 0) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public static function deleteReturn(SaleReturn $return): void

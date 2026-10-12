@@ -66,7 +66,7 @@ class SaleReturnResource extends Resource
     {
         return [
             'index' => ListSaleReturns::route('/'),
-            // 'create' => CreateSaleReturn::route('/create'),
+            'create' => CreateSaleReturn::route('/create'),
             // 'edit' => EditSaleReturn::route('/{record}/edit'),
         ];
     }

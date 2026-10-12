@@ -14,10 +14,11 @@ class ListSaleReturns extends ListRecords
     protected function getHeaderActions(): array
     {
         return [
-            //CreateAction::make()->visible(fn () =>
-            //                    auth(Filament::getCurrentPanel()->getAuthGuard())
-            //                        ->user()?->hasPermissionTo('sales.create', Filament::getCurrentPanel()->getAuthGuard())
-            //                    ),
+            CreateAction::make()
+                ->label('Create Sale Return')
+                ->visible(fn () => auth(Filament::getCurrentPanel()->getAuthGuard())
+                    ->user()?->hasPermissionTo('sales.update', Filament::getCurrentPanel()->getAuthGuard())
+                ),
         ];
     }
 }

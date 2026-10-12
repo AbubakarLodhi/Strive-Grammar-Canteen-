@@ -22,7 +22,7 @@ class EditProduct extends EditRecord
 
     public function getTitle(): string
     {
-        return 'Edit ' . Str::limit((string) $this->record?->name, 30);
+        return 'Edit '.Str::limit((string) $this->record?->name, 30);
     }
 
     protected function getHeaderActions(): array
@@ -57,8 +57,23 @@ class EditProduct extends EditRecord
 
     protected function afterSave(): void
     {
-        $state   = $this->form->getRawState();
+        $state = $this->form->getRawState();
         $product = $this->record;
+
+        /* -------------------------
+         | Sync Variant Prices
+         |
+         | Variants snapshot their own price at creation time (e.g. the
+         | "Standard" variant auto-created on first purchase/sale). Sales
+         | and purchases price a line from the variant, not the product,
+         | so a price edit here would otherwise never reach them.
+         |--------------------------*/
+        if (! $product->is_variable_price) {
+            $product->variants()->update([
+                'selling_price' => $product->selling_price,
+                'purchase_price' => $product->purchase_price,
+            ]);
+        }
 
         /* -------------------------
          | Sync Branches
@@ -100,9 +115,9 @@ class EditProduct extends EditRecord
 
             $product->productImage()->create([
                 'merchant_id' => $product->merchant_id,
-                'type'        => AttachmentType::IMAGE,
-                'meta_type'   => AttachmentMetaType::PRODUCT_IMAGE,
-                'photo_url'   => $path,
+                'type' => AttachmentType::IMAGE,
+                'meta_type' => AttachmentMetaType::PRODUCT_IMAGE,
+                'photo_url' => $path,
             ]);
         }
     }
