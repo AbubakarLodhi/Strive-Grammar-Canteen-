@@ -186,9 +186,27 @@ class ReportsStatsWidget extends Widget
                 ->map(fn ($id) => (string) $id)
                 ->values()
                 ->all(),
-            'date_from' => $this->pageFilters['date_from'] ?? null,
-            'date_to' => $this->pageFilters['date_to'] ?? null,
+            'date_from' => self::normalizeFilterDate($this->pageFilters['date_from'] ?? null),
+            'date_to' => self::normalizeFilterDate($this->pageFilters['date_to'] ?? null),
         ];
+    }
+
+    /**
+     * The dashboard's date picker commits the clicked day with the current
+     * time of day attached (e.g. "2026-10-09 00:08:09") instead of midnight.
+     * whereDate() only normalizes the sale/purchase date column, not this
+     * bound value, so that leftover time pushed the lower bound ("date_from
+     * >= ...") past midnight and silently excluded rows dated exactly on
+     * that day. Every date filter is read through here so it's always a
+     * plain Y-m-d string before it reaches a query.
+     */
+    private static function normalizeFilterDate(mixed $date): ?string
+    {
+        if (! filled($date)) {
+            return null;
+        }
+
+        return Carbon::parse($date)->toDateString();
     }
 
     protected function filterPeriodLabel(): string
