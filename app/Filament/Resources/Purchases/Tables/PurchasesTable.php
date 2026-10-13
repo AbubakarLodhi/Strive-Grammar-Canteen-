@@ -3,11 +3,9 @@
 namespace App\Filament\Resources\Purchases\Tables;
 
 use App\Filament\Resources\Purchases\PurchaseResource;
-use App\Filament\Resources\Vendors\VendorResource;
-use App\Models\Branch;
-use App\Models\Business;
+use App\Filament\Support\DateRangeFilter;
 use App\Models\Purchase;
-use App\Models\Vendor;
+use App\Services\PurchaseReturnService;
 use Filament\Actions\Action;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteAction;
@@ -19,17 +17,14 @@ use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Repeater;
-use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
+use Filament\Notifications\Notification;
 use Filament\Schemas\Components\Section;
 use Filament\Tables\Columns\BadgeColumn;
 use Filament\Tables\Columns\TextColumn;
-use Filament\Tables\Filters\Filter;
-use Filament\Tables\Filters\SelectFilter;
+use Filament\Tables\Enums\FiltersLayout;
 use Filament\Tables\Table;
-use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Facades\DB;
 
 class PurchasesTable
 {
@@ -80,10 +75,10 @@ class PurchasesTable
                             ->pluck('name');
 
                         $visible = $names->take(2);
-                        $hidden  = $names->count() - $visible->count();
+                        $hidden = $names->count() - $visible->count();
 
                         if ($hidden > 0) {
-                            $visible->push('+' . $hidden);
+                            $visible->push('+'.$hidden);
                         }
 
                         return $visible->toArray();
@@ -106,10 +101,10 @@ class PurchasesTable
                             ->pluck('name');
 
                         $visible = $names->take(2);
-                        $hidden  = $names->count() - $visible->count();
+                        $hidden = $names->count() - $visible->count();
 
                         if ($hidden > 0) {
-                            $visible->push('+' . $hidden);
+                            $visible->push('+'.$hidden);
                         }
 
                         return $visible->toArray();
@@ -223,152 +218,14 @@ class PurchasesTable
              * FILTERS
              * =========================== */
             ->filters([
-
-                /* -------- BUSINESS FILTER -------- */
-                SelectFilter::make('business_id')
-                    ->label('Business')
-                    ->options(function () {
-                        $user = Filament::auth()->user();
-
-                        $merchantId = match (true) {
-                            $user instanceof \App\Models\Merchant => $user->id,
-                            $user instanceof \App\Models\User     => $user->merchant_id,
-                            default                               => null,
-                        };
-
-                        if (! $merchantId) {
-                            return [];
-                        }
-
-                        $query = Business::query()
-                            ->withoutTrashed()
-                            ->where('merchant_id', $merchantId);
-
-                        if ($user instanceof \App\Models\User) {
-                            $query->whereHas('users', fn ($q) =>
-                            $q->where('users.id', $user->id)
-                            );
-                        }
-
-                        return $query
-                            ->orderBy('name')
-                            ->pluck('name', 'id')
-                            ->toArray();
-                    })
-                    ->query(function (Builder $query, array $data) {
-                        if (empty($data['value'])) {
-                            return;
-                        }
-
-                        $query->whereHas('items', fn ($q) =>
-                        $q->where('purchase_items.business_id', $data['value'])
-                        );
-                    }),
-
-                /* -------- BRANCH FILTER -------- */
-                SelectFilter::make('branch_id')
-                    ->label('Branch')
-                    ->searchable()
-                    ->options(function ($livewire) {
-
-                        $user = Filament::auth()->user();
-
-                        $merchantId = match (true) {
-                            $user instanceof \App\Models\Merchant => $user->id,
-                            $user instanceof \App\Models\User     => $user->merchant_id,
-                            default                               => null,
-                        };
-
-                        if (! $merchantId) {
-                            return [];
-                        }
-
-                        $businessId = $livewire->getTableFilterState('business_id')['value'] ?? null;
-
-                        $query = Branch::query()
-                            ->withoutTrashed()
-                            ->where('merchant_id', $merchantId);
-
-                        if ($businessId) {
-                            $query->where('business_id', $businessId);
-                        }
-
-                        if ($user instanceof \App\Models\User) {
-                            $query->whereHas('users', fn ($q) =>
-                            $q->where('users.id', $user->id)
-                            );
-                        }
-
-                        return $query
-                            ->orderBy('name')
-                            ->pluck('name', 'id')
-                            ->toArray();
-                    })
-                    ->query(function (Builder $query, array $data) {
-                        if (empty($data['value'])) {
-                            return;
-                        }
-
-                        $query->whereHas('items', fn ($q) =>
-                        $q->where('purchase_items.branch_id', $data['value'])
-                        );
-                    }),
-
-                SelectFilter::make('vendor_id')
-                    ->label('Vendor')
-                    ->searchable()
-                    ->options(function () {
-                        $user = Filament::auth()->user();
-
-                        return VendorResource::scopeVisibleVendors(
-                            Vendor::query()->withoutTrashed(),
-                            $user,
-                        )
-                            ->orderBy('name')
-                            ->pluck('name', 'id')
-                            ->toArray();
-                    })
-                    ->query(function (Builder $query, array $data) {
-                        if (empty($data['value'])) {
-                            return;
-                        }
-
-                        $query->where('vendor_id', $data['value']);
-                    }),
-
-                SelectFilter::make('payment_type')
-                    ->label('Payment Type')
-                    ->options([
-                        'cash' => 'Cash',
-                        'credit' => 'Credit',
-                    ]),
-
-                Filter::make('purchase_date_range')
-                    ->label('Purchase Date')
-                    ->schema([
-                        DatePicker::make('from_date')
-                            ->label('From Date'),
-                        DatePicker::make('to_date')
-                            ->label('To Date'),
-                    ])
-                    ->query(function (Builder $query, array $data): Builder {
-                        return $query
-                            ->when(
-                                $data['from_date'] ?? null,
-                                fn (Builder $query, $date): Builder => $query->whereDate('purchase_date', '>=', $date),
-                            )
-                            ->when(
-                                $data['to_date'] ?? null,
-                                fn (Builder $query, $date): Builder => $query->whereDate('purchase_date', '<=', $date),
-                            );
-                    }),
+                DateRangeFilter::make('purchase_date_range', 'purchase_date', 'Purchase Date'),
             ])
+            ->filtersLayout(FiltersLayout::AboveContent)
 
             /* ===========================
              * RECORD ACTIONS
              * =========================== */
-            ->recordUrl(fn (Purchase $record) =>
-            auth(Filament::getCurrentPanel()->getAuthGuard())
+            ->recordUrl(fn (Purchase $record) => auth(Filament::getCurrentPanel()->getAuthGuard())
                 ->user()
                 ?->hasPermissionTo('purchases.view', Filament::getCurrentPanel()->getAuthGuard())
                 ? PurchaseResource::getUrl('view', ['record' => $record])
@@ -380,8 +237,7 @@ class PurchasesTable
                     ->color('info')
                     ->label(' ')
                     ->tooltip('View')
-                    ->visible(fn () =>
-                    auth(Filament::getCurrentPanel()->getAuthGuard())
+                    ->visible(fn () => auth(Filament::getCurrentPanel()->getAuthGuard())
                         ->user()?->hasPermissionTo('purchases.view', Filament::getCurrentPanel()->getAuthGuard())
                     ),
 
@@ -394,9 +250,8 @@ class PurchasesTable
                         'type' => 'purchase',
                         'id' => $record->id,
                     ]))
-                    ->visible(fn () =>
-                        auth(Filament::getCurrentPanel()->getAuthGuard())
-                            ->user()?->hasPermissionTo('purchases.view', Filament::getCurrentPanel()->getAuthGuard())
+                    ->visible(fn () => auth(Filament::getCurrentPanel()->getAuthGuard())
+                        ->user()?->hasPermissionTo('purchases.view', Filament::getCurrentPanel()->getAuthGuard())
                     ),
 
                 Action::make('return_purchase')
@@ -408,14 +263,13 @@ class PurchasesTable
                     ->modalWidth('7xl')
                     ->form(fn (Purchase $record) => self::returnForm($record))
                     ->action(function (Purchase $record, array $data) {
-                        \App\Services\PurchaseReturnService::createReturn($record, $data);
-                        \Filament\Notifications\Notification::make()
+                        PurchaseReturnService::createReturn($record, $data);
+                        Notification::make()
                             ->success()
                             ->title('Purchase returned')
                             ->send();
                     })
-                    ->visible(fn (Purchase $record) =>
-                        self::hasReturnableItems($record)
+                    ->visible(fn (Purchase $record) => self::hasReturnableItems($record)
                         && (
                             auth(Filament::getCurrentPanel()->getAuthGuard())
                                 ->user()?->hasPermissionTo('purchases.delete', Filament::getCurrentPanel()->getAuthGuard())
@@ -428,8 +282,7 @@ class PurchasesTable
                     ->color('warning')
                     ->label(' ')
                     ->tooltip('Edit')
-                    ->visible(fn (Purchase $record) =>
-                    auth(Filament::getCurrentPanel()->getAuthGuard())
+                    ->visible(fn (Purchase $record) => auth(Filament::getCurrentPanel()->getAuthGuard())
                         ->user()?->hasPermissionTo('purchases.update', Filament::getCurrentPanel()->getAuthGuard())
                         && (! $record->returns()->exists() || self::hasReturnableItems($record))
                     ),
@@ -438,8 +291,7 @@ class PurchasesTable
                     ->color('danger')
                     ->label(' ')
                     ->tooltip('Delete')
-                    ->visible(fn () =>
-                    auth(Filament::getCurrentPanel()->getAuthGuard())
+                    ->visible(fn () => auth(Filament::getCurrentPanel()->getAuthGuard())
                         ->user()?->hasPermissionTo('purchases.delete', Filament::getCurrentPanel()->getAuthGuard())
                     ),
             ])
@@ -447,8 +299,7 @@ class PurchasesTable
             ->toolbarActions([
                 BulkActionGroup::make([
                     DeleteBulkAction::make()
-                        ->visible(fn () =>
-                        auth(Filament::getCurrentPanel()->getAuthGuard())
+                        ->visible(fn () => auth(Filament::getCurrentPanel()->getAuthGuard())
                             ->user()?->hasPermissionTo('purchases.delete', Filament::getCurrentPanel()->getAuthGuard())
                         ),
                 ]),
@@ -545,32 +396,28 @@ class PurchasesTable
                         ->label('Subtotal')
                         ->live()
                         ->extraAttributes(['data-summary' => 'subtotal'])
-                        ->content(fn (callable $get) =>
-                        'PKR ' . number_format((float) ($get('subtotal') ?? 0), 2)
+                        ->content(fn (callable $get) => 'PKR '.number_format((float) ($get('subtotal') ?? 0), 2)
                         ),
 
                     Placeholder::make('total_discount_display')
                         ->label('Discount')
                         ->live()
                         ->extraAttributes(['data-summary' => 'discount'])
-                        ->content(fn (callable $get) =>
-                        'PKR ' . number_format((float) ($get('total_discount') ?? 0), 2)
+                        ->content(fn (callable $get) => 'PKR '.number_format((float) ($get('total_discount') ?? 0), 2)
                         ),
 
                     Placeholder::make('total_tax_display')
                         ->label('Tax')
                         ->live()
                         ->extraAttributes(['data-summary' => 'tax'])
-                        ->content(fn (callable $get) =>
-                        'PKR ' . number_format((float) ($get('total_tax') ?? 0), 2)
+                        ->content(fn (callable $get) => 'PKR '.number_format((float) ($get('total_tax') ?? 0), 2)
                         ),
 
                     Placeholder::make('total_amount_display')
                         ->label('Total Amount')
                         ->live()
                         ->extraAttributes(['data-summary' => 'total'])
-                        ->content(fn (callable $get) =>
-                        'PKR ' . number_format((float) ($get('total_amount') ?? 0), 2)
+                        ->content(fn (callable $get) => 'PKR '.number_format((float) ($get('total_amount') ?? 0), 2)
                         ),
 
                     Hidden::make('subtotal')->default($summary['subtotal'])->dehydrated(),
@@ -655,5 +502,4 @@ class PurchasesTable
 
         return false;
     }
-
 }

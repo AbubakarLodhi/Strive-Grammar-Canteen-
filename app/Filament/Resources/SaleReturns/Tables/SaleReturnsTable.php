@@ -2,16 +2,18 @@
 
 namespace App\Filament\Resources\SaleReturns\Tables;
 
+use App\Filament\Support\DateRangeFilter;
 use App\Services\SaleReturnService;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Facades\Filament;
 use Filament\Notifications\Notification;
-use Illuminate\Database\Eloquent\Collection;
 use Filament\Tables\Columns\BadgeColumn;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Enums\FiltersLayout;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Collection;
 
 class SaleReturnsTable
 {
@@ -63,8 +65,9 @@ class SaleReturnsTable
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
-                //
+                DateRangeFilter::make('return_date_range', 'return_date', 'Return Date'),
             ])
+            ->filtersLayout(FiltersLayout::AboveContent)
             ->recordActions([
                 DeleteAction::make()
                     ->requiresConfirmation()
@@ -75,16 +78,14 @@ class SaleReturnsTable
                             ->title('Sale return deleted')
                             ->send();
                     })
-                    ->visible(fn () =>
-                    auth(Filament::getCurrentPanel()->getAuthGuard())
+                    ->visible(fn () => auth(Filament::getCurrentPanel()->getAuthGuard())
                         ->user()?->hasPermissionTo('sales.delete', Filament::getCurrentPanel()->getAuthGuard())
                     ),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([
                     DeleteBulkAction::make()
-                        ->visible(fn () =>
-                        auth(Filament::getCurrentPanel()->getAuthGuard())
+                        ->visible(fn () => auth(Filament::getCurrentPanel()->getAuthGuard())
                             ->user()?->hasPermissionTo('sales.delete', Filament::getCurrentPanel()->getAuthGuard())
                         )
                         ->action(function (Collection $records): void {

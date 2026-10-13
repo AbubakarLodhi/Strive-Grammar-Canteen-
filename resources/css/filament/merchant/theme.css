@@ -142,6 +142,60 @@ body.fi-panel-user .fi-main-ctn .fi-ta-ctn .fi-ta-content-ctn {
     color: #ffffff;
 }
 
+/* Table "filters above content" header — Filament paints this with a
+   gradient built from the generated primary-color shades, which (being
+   a light/vivid tint of the navy primary) clashes with the rest of this
+   app's muted dark cards. Replace it with the same flat dark-card look
+   used everywhere else. */
+.dark .fi-ta-ctn .fi-ta-header-ctn {
+    background-image: none;
+    background-color: var(--flowdesk-card-bg);
+    border-bottom: 1px solid var(--flowdesk-border-dark);
+}
+
+.dark .fi-ta-ctn .fi-ta-filters-heading {
+    color: #ffffff;
+}
+
+.dark .fi-ta-ctn .fi-ta-filters-description {
+    color: #94a3b8;
+}
+
+/* Table filters — keep the heading/reset row on its own line, then lay
+   the filter fields and the Apply button out side by side instead of
+   Filament's default stacked layout. */
+.fi-ta-ctn .fi-ta-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    column-gap: 1rem;
+    row-gap: 0.75rem;
+}
+
+.fi-ta-ctn .fi-ta-filters-header {
+    flex-basis: 100%;
+}
+
+.fi-ta-ctn .fi-ta-filters > .fi-sc {
+    flex: 0 1 auto !important;
+    width: fit-content !important;
+    grid-template-columns: none !important;
+    display: flex !important;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.fi-ta-ctn .fi-ta-filters-actions-ctn {
+    flex: 0 0 auto;
+}
+
+@media (max-width: 640px) {
+    .fi-ta-ctn .fi-ta-filters > .fi-sc,
+    .fi-ta-ctn .fi-ta-filters-actions-ctn {
+        flex-basis: 100%;
+    }
+}
+
 .dark body.fi-panel-merchant .fi-main-ctn .fi-input-wrp,
 .dark body.fi-panel-user .fi-main-ctn .fi-input-wrp {
     background-color: #0b1220;

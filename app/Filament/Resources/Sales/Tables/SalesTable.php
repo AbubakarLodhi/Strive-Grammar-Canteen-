@@ -2,11 +2,8 @@
 
 namespace App\Filament\Resources\Sales\Tables;
 
-use App\Filament\Resources\Customers\CustomerResource;
 use App\Filament\Resources\Sales\SaleResource;
-use App\Models\Branch;
-use App\Models\Business;
-use App\Models\Merchant;
+use App\Filament\Support\DateRangeFilter;
 use App\Models\Sale;
 use App\Models\User;
 use App\Services\SaleDeletionService;
@@ -28,10 +25,8 @@ use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
 use Filament\Schemas\Components\Section;
 use Filament\Tables\Columns\TextColumn;
-use Filament\Tables\Filters\Filter;
-use Filament\Tables\Filters\SelectFilter;
+use Filament\Tables\Enums\FiltersLayout;
 use Filament\Tables\Table;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
 
@@ -235,141 +230,9 @@ class SalesTable
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
-
-                SelectFilter::make('customer_id')
-                    ->relationship(
-                        'activeCustomer',
-                        'name',
-                        modifyQueryUsing: function (Builder $query) {
-                            CustomerResource::scopeVisibleCustomers(
-                                $query->withoutTrashed(),
-                                Filament::auth()->user(),
-                            );
-                        }
-                    )
-                    ->label('Customer')
-                    ->searchable()
-                    ->preload(),
-
-                SelectFilter::make('status')
-                    ->label('Status')
-                    ->options([
-                        Sale::STATUS_DRAFT => 'Draft',
-                        Sale::STATUS_POSTED => 'Posted',
-                    ]),
-
-                SelectFilter::make('business_id')
-                    ->label('Business')
-                    ->options(function () {
-                        $user = Filament::auth()->user();
-
-                        $merchantId = match (true) {
-                            $user instanceof Merchant => $user->id,
-                            $user instanceof User => $user->merchant_id,
-                            default => null,
-                        };
-
-                        if (! $merchantId) {
-                            return [];
-                        }
-
-                        $query = Business::query()
-                            ->withoutTrashed()
-                            ->where('merchant_id', $merchantId);
-
-                        if ($user instanceof User) {
-                            $query->whereHas('users', fn ($q) => $q->where('users.id', $user->id)
-                            );
-                        }
-
-                        return $query
-                            ->orderBy('name')
-                            ->pluck('name', 'id')
-                            ->toArray();
-                    })
-                    ->query(function (Builder $query, array $data) {
-                        if (empty($data['value'])) {
-                            return;
-                        }
-
-                        $query->whereHas('items', fn ($q) => $q->where('sale_items.business_id', $data['value'])
-                        );
-                    }),
-
-                SelectFilter::make('branch_id')
-                    ->label('Branch')
-                    ->searchable()
-                    ->options(function ($livewire) {
-
-                        $user = Filament::auth()->user();
-
-                        $merchantId = match (true) {
-                            $user instanceof Merchant => $user->id,
-                            $user instanceof User => $user->merchant_id,
-                            default => null,
-                        };
-
-                        if (! $merchantId) {
-                            return [];
-                        }
-
-                        $businessId = $livewire->getTableFilterState('business_id')['value'] ?? null;
-
-                        $query = Branch::query()
-                            ->withoutTrashed()
-                            ->where('merchant_id', $merchantId);
-
-                        if ($businessId) {
-                            $query->where('business_id', $businessId);
-                        }
-
-                        if ($user instanceof User) {
-                            $query->whereHas('users', fn ($q) => $q->where('users.id', $user->id)
-                            );
-                        }
-
-                        return $query
-                            ->orderBy('name')
-                            ->pluck('name', 'id')
-                            ->toArray();
-                    })
-                    ->query(function (Builder $query, array $data) {
-                        if (empty($data['value'])) {
-                            return;
-                        }
-
-                        $query->whereHas('items', fn ($q) => $q->where('sale_items.branch_id', $data['value'])
-                        );
-                    }),
-
-                SelectFilter::make('payment_type')
-                    ->label('Payment Type')
-                    ->options([
-                        'cash' => 'Cash',
-                        'credit' => 'Credit',
-                    ]),
-
-                Filter::make('sale_date_range')
-                    ->label('Sale Date')
-                    ->schema([
-                        DatePicker::make('from_date')
-                            ->label('From Date'),
-                        DatePicker::make('to_date')
-                            ->label('To Date'),
-                    ])
-                    ->query(function (Builder $query, array $data): Builder {
-                        return $query
-                            ->when(
-                                $data['from_date'] ?? null,
-                                fn (Builder $query, $date): Builder => $query->whereDate('sale_date', '>=', $date),
-                            )
-                            ->when(
-                                $data['to_date'] ?? null,
-                                fn (Builder $query, $date): Builder => $query->whereDate('sale_date', '<=', $date),
-                            );
-                    }),
-
+                DateRangeFilter::make('sale_date_range', 'sale_date', 'Sale Date'),
             ])
+            ->filtersLayout(FiltersLayout::AboveContent)
             ->recordUrl(fn (Sale $record) => auth(Filament::getCurrentPanel()->getAuthGuard())
                 ->user()
                 ?->hasPermissionTo('sales.view', Filament::getCurrentPanel()->getAuthGuard())
