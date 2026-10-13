@@ -161,6 +161,19 @@ body.fi-panel-user .fi-main-ctn .fi-ta-ctn .fi-ta-content-ctn {
     color: #94a3b8;
 }
 
+/* Repeater item headers (e.g. sale/purchase line items) — same Filament
+   primary-color gradient as the table filters header above; flatten to
+   match the rest of the app's dark cards. */
+.dark .fi-fo-repeater-item-header {
+    background-image: none;
+    background-color: var(--flowdesk-card-bg);
+    border-bottom: 1px solid var(--flowdesk-border-dark);
+}
+
+.dark .fi-fo-repeater-item-header-label {
+    color: #ffffff;
+}
+
 /* Table filters — keep the heading/reset row on its own line, then lay
    the filter fields and the Apply button out side by side instead of
    Filament's default stacked layout. */

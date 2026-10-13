@@ -23,6 +23,7 @@ use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
+use Filament\Schemas\Components\Actions;
 use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Utilities\Get;
@@ -184,7 +185,7 @@ class SaleForm
              * SALE ITEMS
              * =========================== */
             Section::make('Products')
-                ->description('Add one or more products to this sale. Use “Add Item” for additional lines.')
+                ->description('Use the form below to add products to this sale.')
                 ->extraAttributes(['class' => 'line-items-section'])
                 ->columnSpanFull()
                 ->headerActions([
@@ -256,6 +257,517 @@ class SaleForm
                     Hidden::make('discount_mode')
                         ->default('percent')
                         ->dehydrated(false),
+
+                    Section::make('Add Product')
+                        ->description('Search a product, set the quantity and pricing, then click “Add to list”.')
+                        ->schema([
+                            Grid::make(4)
+                                ->schema([
+                                    Select::make('staging_product_id')
+                                        ->label('Product')
+                                        ->searchable()
+                                        ->preload()
+                                        ->live()
+                                        ->reactive()
+                                        ->dehydrated(false)
+                                        ->options(fn (): array => self::productOptions())
+                                        ->getSearchResultsUsing(fn (string $search): array => self::productOptions($search))
+                                        ->disableOptionWhen(
+                                            fn (string $value, $livewire): bool => ! ProductStockAvailability::isProductIdAvailable(
+                                                $value,
+                                                excludeSaleId: self::editingSaleId($livewire),
+                                            )
+                                        )
+                                        ->getOptionLabelUsing(function ($value): ?string {
+                                            if (! $value) {
+                                                return null;
+                                            }
+
+                                            $product = Product::withTrashed()
+                                                ->select(['id', 'name', 'sku', 'track_inventory', 'type'])
+                                                ->find($value);
+
+                                            if (! $product) {
+                                                return (string) $value;
+                                            }
+
+                                            return ProductStockAvailability::productOptionLabel($product);
+                                        })
+                                        ->afterStateUpdated(function ($state, callable $set, callable $get) {
+                                            $set('staging_branch_id', null);
+                                            $set('staging_product_variant_id', null);
+                                            $set('staging_unit_price', 0);
+                                            self::recalcStagingLineTotal($set, $get);
+
+                                            if (! $state) {
+                                                return;
+                                            }
+
+                                            $product = Product::query()
+                                                ->select(['id', 'name', 'sku', 'track_inventory', 'type'])
+                                                ->find($state);
+
+                                            if ($product && ! ProductStockAvailability::isProductAvailable($product)) {
+                                                $set('staging_product_id', null);
+
+                                                Notification::make()
+                                                    ->title('Out of stock')
+                                                    ->body('This product is currently out of stock and cannot be added to the sale.')
+                                                    ->warning()
+                                                    ->send();
+
+                                                return;
+                                            }
+
+                                            $branchIds = Branch::query()
+                                                ->withoutTrashed()
+                                                ->where('merchant_id', self::merchantId())
+                                                ->whereExists(function ($q) use ($state) {
+                                                    $q->selectRaw(1)
+                                                        ->from('branch_products')
+                                                        ->whereColumn('branch_products.branch_id', 'branches.id')
+                                                        ->where('branch_products.product_id', $state);
+                                                })
+                                                ->pluck('branches.id');
+
+                                            if ($branchIds->count() === 1) {
+                                                $set('staging_branch_id', $branchIds->first());
+                                            }
+
+                                            $product = Product::query()
+                                                ->select(['id', 'selling_price'])
+                                                ->find($state);
+
+                                            if (! $product) {
+                                                return;
+                                            }
+
+                                            $variants = ProductVariant::query()
+                                                ->withoutTrashed()
+                                                ->where('product_id', $state)
+                                                ->get(['id', 'selling_price', 'name', 'sku']);
+
+                                            if ($variants->isEmpty()) {
+                                                $branchId = filled($get('staging_branch_id')) ? (string) $get('staging_branch_id') : null;
+
+                                                if (! ProductStockAvailability::isProductAvailable($product, $branchId)) {
+                                                    $set('staging_product_id', null);
+                                                    $set('staging_branch_id', null);
+
+                                                    Notification::make()
+                                                        ->title('Out of stock')
+                                                        ->body('This product is currently out of stock and cannot be added to the sale.')
+                                                        ->warning()
+                                                        ->send();
+
+                                                    return;
+                                                }
+
+                                                $set('staging_unit_price', (float) ($product->selling_price ?? 0));
+                                                self::recalcStagingLineTotal($set, $get);
+
+                                                return;
+                                            }
+
+                                            if ($variants->count() === 1) {
+                                                $variant = $variants->first();
+                                                $branchId = filled($get('staging_branch_id')) ? (string) $get('staging_branch_id') : null;
+
+                                                if (! ProductStockAvailability::isVariantAvailable($variant, $branchId, 1)) {
+                                                    Notification::make()
+                                                        ->title('Out of stock')
+                                                        ->body('This product variant is out of stock'.($branchId ? ' at the selected branch' : '').'.')
+                                                        ->warning()
+                                                        ->send();
+
+                                                    return;
+                                                }
+
+                                                $set('staging_product_variant_id', $variant->id);
+                                                $set('staging_unit_price', (float) ($variant->selling_price ?? $product->selling_price ?? 0));
+                                                self::recalcStagingLineTotal($set, $get);
+                                            }
+                                        }),
+
+                                    Select::make('staging_branch_id')
+                                        ->label('Branch')
+                                        ->searchable()
+                                        ->live()
+                                        ->reactive()
+                                        ->allowHtml()
+                                        ->dehydrated(false)
+                                        ->getOptionLabelUsing(fn ($value) => Branch::withTrashed()->find($value)?->name ?? $value)
+                                        ->options(function (callable $get): array {
+                                            $productId = $get('staging_product_id');
+                                            if (! $productId) {
+                                                return [];
+                                            }
+
+                                            $hasBranchAssignments = DB::table('branch_products')
+                                                ->where('product_id', $productId)
+                                                ->exists();
+
+                                            $query = Branch::query()
+                                                ->withoutTrashed()
+                                                ->with('business')
+                                                ->where('merchant_id', self::merchantId());
+
+                                            if ($hasBranchAssignments) {
+                                                $query->whereExists(function ($q) use ($productId) {
+                                                    $q->selectRaw(1)
+                                                        ->from('branch_products')
+                                                        ->whereColumn('branch_products.branch_id', 'branches.id')
+                                                        ->where('branch_products.product_id', $productId);
+                                                });
+                                            }
+
+                                            return $query
+                                                ->orderBy('business_id')
+                                                ->orderBy('branches.name')
+                                                ->get()
+                                                ->groupBy(fn ($branch) => $branch->business?->name ?? 'Other')
+                                                ->map(fn ($group) => $group->pluck('name', 'id')
+                                                    ->map(fn ($name) => '&nbsp;&nbsp;&nbsp;&nbsp;'.e($name))
+                                                    ->toArray()
+                                                )
+                                                ->toArray();
+                                        })
+                                        ->afterStateUpdated(function (callable $set, callable $get) {
+                                            $set('staging_product_variant_id', null);
+                                            $set('staging_unit_price', 0);
+                                            self::recalcStagingLineTotal($set, $get);
+
+                                            $productId = $get('staging_product_id');
+                                            $branchId = filled($get('staging_branch_id')) ? (string) $get('staging_branch_id') : null;
+
+                                            if (! filled($productId) || ! filled($branchId)) {
+                                                return;
+                                            }
+
+                                            $variants = ProductVariant::query()
+                                                ->withoutTrashed()
+                                                ->where('product_id', $productId)
+                                                ->where('is_active', true)
+                                                ->get();
+
+                                            if ($variants->count() !== 1) {
+                                                return;
+                                            }
+
+                                            $variant = $variants->first();
+
+                                            if (! ProductStockAvailability::isVariantAvailable($variant, $branchId, 1)) {
+                                                return;
+                                            }
+
+                                            $set('staging_product_variant_id', $variant->id);
+                                            $set('staging_unit_price', (float) ($variant->selling_price ?? 0));
+                                            self::recalcStagingLineTotal($set, $get);
+                                        }),
+
+                                    Select::make('staging_product_variant_id')
+                                        ->label('Product Variant')
+                                        ->searchable()
+                                        ->live()
+                                        ->reactive()
+                                        ->dehydrated(false)
+                                        ->visible(fn (callable $get): bool => self::productHasVariants($get('staging_product_id')))
+                                        ->options(function (callable $get): array {
+                                            $productId = $get('staging_product_id');
+
+                                            if (! $productId) {
+                                                return [];
+                                            }
+
+                                            $branchId = filled($get('staging_branch_id')) ? (string) $get('staging_branch_id') : null;
+
+                                            return ProductStockAvailability::saleVariantOptions(
+                                                (string) $productId,
+                                                $branchId,
+                                            );
+                                        })
+                                        ->disableOptionWhen(function (string $value, Get $get, $livewire): bool {
+                                            $branchId = $get('staging_branch_id');
+
+                                            return ! ProductStockAvailability::isVariantIdAvailable(
+                                                $value,
+                                                filled($branchId) ? (string) $branchId : null,
+                                                excludeSaleId: self::editingSaleId($livewire),
+                                            );
+                                        })
+                                        ->getOptionLabelUsing(function ($value): ?string {
+                                            if (! $value) {
+                                                return null;
+                                            }
+
+                                            $variant = ProductVariant::withTrashed()
+                                                ->select(['id', 'name', 'sku'])
+                                                ->find($value);
+
+                                            if (! $variant) {
+                                                return (string) $value;
+                                            }
+
+                                            return (string) ($variant->name ?? $variant->sku ?? $variant->id);
+                                        })
+                                        ->afterStateUpdated(function ($state, callable $set, callable $get) {
+                                            if (! $state) {
+                                                $set('staging_unit_price', 0);
+                                                self::recalcStagingLineTotal($set, $get);
+
+                                                return;
+                                            }
+
+                                            $variant = ProductVariant::query()->find($state);
+
+                                            if (! $variant) {
+                                                return;
+                                            }
+
+                                            $branchId = $get('staging_branch_id');
+                                            $qty = max(1, (int) ($get('staging_quantity') ?? 1));
+
+                                            if (
+                                                filled($branchId)
+                                                && ! ProductStockAvailability::isVariantAvailable($variant, (string) $branchId, $qty)
+                                            ) {
+                                                $set('staging_product_variant_id', null);
+                                                $set('staging_unit_price', 0);
+                                                self::recalcStagingLineTotal($set, $get);
+
+                                                Notification::make()
+                                                    ->title('Out of stock')
+                                                    ->body('The selected variant is out of stock at this branch.')
+                                                    ->warning()
+                                                    ->send();
+
+                                                return;
+                                            }
+
+                                            $set('staging_unit_price', (float) ($variant->selling_price ?? 0));
+                                            self::recalcStagingLineTotal($set, $get);
+                                        }),
+
+                                    TextInput::make('staging_quantity')
+                                        ->label('Quantity')
+                                        ->inputMode('numeric')
+                                        ->rule('numeric')
+                                        ->default(1)
+                                        ->minValue(1)
+                                        ->dehydrated(false)
+                                        ->live(onBlur: true)
+                                        ->afterStateUpdated(function ($state, callable $set, callable $get) {
+                                            if ($state === null || $state === '' || ! is_numeric($state)) {
+                                                return;
+                                            }
+
+                                            $qty = max(1, (float) $state);
+                                            $variantId = $get('staging_product_variant_id');
+                                            $branchId = $get('staging_branch_id');
+
+                                            if (filled($variantId) && filled($branchId)) {
+                                                $variant = ProductVariant::query()->find($variantId);
+
+                                                if (
+                                                    $variant
+                                                    && ! ProductStockAvailability::isVariantAvailable($variant, (string) $branchId, (int) ceil($qty))
+                                                ) {
+                                                    $available = ProductStockAvailability::variantStock((string) $variantId, (string) $branchId);
+
+                                                    Notification::make()
+                                                        ->title('Insufficient stock')
+                                                        ->body('Only '.ProductStockAvailability::formatQuantity($available).' unit(s) available at this branch.')
+                                                        ->warning()
+                                                        ->send();
+
+                                                    if ($available <= 0) {
+                                                        $set('staging_product_variant_id', null);
+                                                        $set('staging_quantity', 1);
+                                                        $set('staging_unit_price', 0);
+                                                        self::recalcStagingLineTotal($set, $get);
+
+                                                        return;
+                                                    }
+
+                                                    $qty = min($qty, (int) floor($available));
+                                                    $set('staging_quantity', $qty);
+                                                }
+                                            }
+
+                                            self::recalcStagingLineTotal($set, $get);
+                                        }),
+                                ]),
+
+                            Grid::make(4)
+                                ->schema([
+                                    TextInput::make('staging_unit_price')
+                                        ->label('Unit Price')
+                                        ->inputMode('decimal')
+                                        ->rule('numeric')
+                                        ->default(0)
+                                        ->minValue(0)
+                                        ->dehydrated(false)
+                                        ->live(onBlur: true)
+                                        ->afterStateUpdated(function ($state, callable $set, callable $get) {
+                                            if ($state === null || $state === '' || ! is_numeric($state)) {
+                                                return;
+                                            }
+
+                                            self::recalcStagingLineTotal($set, $get);
+                                        }),
+
+                                    TextInput::make('staging_discount')
+                                        ->label('Discount (%)')
+                                        ->inputMode('decimal')
+                                        ->rule('numeric')
+                                        ->default(0)
+                                        ->minValue(0)
+                                        ->rule('max:100')
+                                        ->step(0.01)
+                                        ->suffix('%')
+                                        ->dehydrated(false)
+                                        ->live(onBlur: true)
+                                        ->afterStateUpdated(fn (callable $set, callable $get) => self::recalcStagingLineTotal($set, $get))
+                                        ->visible(fn (callable $get) => ($get('discount_mode') ?? 'percent') !== 'amount'),
+
+                                    TextInput::make('staging_discount_amount')
+                                        ->label('Discount (PKR)')
+                                        ->inputMode('decimal')
+                                        ->rule('numeric')
+                                        ->default(0)
+                                        ->minValue(0)
+                                        ->maxValue(fn (callable $get) => max(0, (float) ($get('staging_quantity') ?? 0) * (float) ($get('staging_unit_price') ?? 0)))
+                                        ->step(0.01)
+                                        ->dehydrated(false)
+                                        ->live(onBlur: true)
+                                        ->afterStateUpdated(fn (callable $set, callable $get) => self::recalcStagingLineTotal($set, $get))
+                                        ->visible(fn (callable $get) => ($get('discount_mode') ?? 'percent') === 'amount'),
+
+                                    TextInput::make('staging_tax')
+                                        ->label('Tax (%)')
+                                        ->inputMode('decimal')
+                                        ->rule('numeric')
+                                        ->default(0)
+                                        ->minValue(0)
+                                        ->rule('max:100')
+                                        ->step(0.01)
+                                        ->suffix('%')
+                                        ->dehydrated(false)
+                                        ->live(onBlur: true)
+                                        ->afterStateUpdated(fn (callable $set, callable $get) => self::recalcStagingLineTotal($set, $get))
+                                        ->visible(fn (callable $get) => ($get('discount_mode') ?? 'percent') !== 'amount'),
+
+                                    TextInput::make('staging_tax_amount')
+                                        ->label('Tax (PKR)')
+                                        ->inputMode('decimal')
+                                        ->rule('numeric')
+                                        ->default(0)
+                                        ->minValue(0)
+                                        ->maxValue(fn (callable $get) => max(0, (float) ($get('staging_quantity') ?? 0) * (float) ($get('staging_unit_price') ?? 0)))
+                                        ->step(0.01)
+                                        ->dehydrated(false)
+                                        ->live(onBlur: true)
+                                        ->afterStateUpdated(fn (callable $set, callable $get) => self::recalcStagingLineTotal($set, $get))
+                                        ->visible(fn (callable $get) => ($get('discount_mode') ?? 'percent') === 'amount'),
+
+                                    TextInput::make('staging_line_total')
+                                        ->label('Line Total')
+                                        ->numeric()
+                                        ->disabled()
+                                        ->dehydrated(false)
+                                        ->default(0),
+                                ]),
+
+                            Hidden::make('staging_line_subtotal')
+                                ->default(0)
+                                ->dehydrated(false),
+
+                            Actions::make([
+                                Action::make('addItemToList')
+                                    ->label('Add to list')
+                                    ->icon('heroicon-m-plus')
+                                    ->action(function (callable $set, callable $get) {
+                                        $productId = $get('staging_product_id');
+                                        $branchId = $get('staging_branch_id');
+                                        $variantId = $get('staging_product_variant_id');
+
+                                        if (! filled($productId)) {
+                                            Notification::make()->title('Select a product first.')->warning()->send();
+
+                                            return;
+                                        }
+
+                                        if (! filled($branchId)) {
+                                            Notification::make()->title('Select a branch first.')->warning()->send();
+
+                                            return;
+                                        }
+
+                                        if (self::productHasVariants($productId) && ! filled($variantId)) {
+                                            Notification::make()->title('Select a product variant first.')->warning()->send();
+
+                                            return;
+                                        }
+
+                                        $qty = max(1, (float) ($get('staging_quantity') ?? 1));
+
+                                        if (filled($variantId)) {
+                                            $variant = ProductVariant::query()->find($variantId);
+
+                                            if ($variant && ! ProductStockAvailability::isVariantAvailable($variant, (string) $branchId, (int) ceil($qty))) {
+                                                Notification::make()
+                                                    ->title('Out of stock')
+                                                    ->body('Not enough stock available for this quantity.')
+                                                    ->warning()
+                                                    ->send();
+
+                                                return;
+                                            }
+                                        } else {
+                                            $product = Product::find($productId);
+
+                                            if ($product && ! ProductStockAvailability::isProductAvailable($product, (string) $branchId)) {
+                                                Notification::make()->title('Out of stock')->warning()->send();
+
+                                                return;
+                                            }
+                                        }
+
+                                        $items = $get('items') ?? [];
+                                        $items[] = [
+                                            'product_id' => $productId,
+                                            'branch_id' => $branchId,
+                                            'product_variant_id' => $variantId,
+                                            'quantity' => $qty,
+                                            'unit_price' => (float) ($get('staging_unit_price') ?? 0),
+                                            'discount' => (float) ($get('staging_discount') ?? 0),
+                                            'tax' => (float) ($get('staging_tax') ?? 0),
+                                            'discount_amount' => (float) ($get('staging_discount_amount') ?? 0),
+                                            'tax_amount' => (float) ($get('staging_tax_amount') ?? 0),
+                                            'line_subtotal' => (float) ($get('staging_line_subtotal') ?? 0),
+                                            'line_total' => (float) ($get('staging_line_total') ?? 0),
+                                        ];
+
+                                        $set('items', $items);
+                                        self::recalcTotals($set, $get);
+
+                                        $set('staging_product_id', null);
+                                        $set('staging_branch_id', null);
+                                        $set('staging_product_variant_id', null);
+                                        $set('staging_quantity', 1);
+                                        $set('staging_unit_price', 0);
+                                        $set('staging_discount', 0);
+                                        $set('staging_discount_amount', 0);
+                                        $set('staging_tax', 0);
+                                        $set('staging_tax_amount', 0);
+                                        $set('staging_line_subtotal', 0);
+                                        $set('staging_line_total', 0);
+
+                                        Notification::make()->title('Product added')->success()->send();
+                                    }),
+                            ]),
+                        ]),
+
                     Repeater::make('items')
                         ->afterStateUpdated(function ($state, callable $set, callable $get, $livewire) {
                             $livewire->resetValidation();
@@ -897,12 +1409,29 @@ class SaleForm
                                 ->dehydrated(false),
                         ])
                         ->columns(4)
-                        ->defaultItems(1)
+                        ->defaultItems(0)
                         ->minItems(1)
                         ->collapsible()
-                        ->itemLabel('Item')
-                        ->itemNumbers()
-                        ->addActionLabel('Add product')
+                        ->collapsed()
+                        ->itemLabel(function (array $state): string {
+                            $productId = $state['product_id'] ?? null;
+                            $productName = $productId
+                                ? (Product::withTrashed()->find($productId)?->name ?? 'Product')
+                                : 'New item';
+
+                            $variantId = $state['product_variant_id'] ?? null;
+                            $variantName = $variantId
+                                ? ProductVariant::withTrashed()->find($variantId)?->name
+                                : null;
+
+                            $qty = $state['quantity'] ?? 0;
+                            $total = number_format((float) ($state['line_total'] ?? 0), 2);
+
+                            $label = $productName.($variantName ? " ({$variantName})" : '');
+
+                            return "{$label} — Qty {$qty} — PKR {$total}";
+                        })
+                        ->addable(false)
                         ->reorderable(false)
                         ->deletable(true)
                         ->afterStateHydrated(function (callable $set, callable $get) {
@@ -1277,6 +1806,47 @@ class SaleForm
             .'</tbody></table></div>';
 
         return new HtmlString($html);
+    }
+
+    private static function recalcStagingLineTotal(callable $set, callable $get): void
+    {
+        $unitPrice = (float) ($get('staging_unit_price') ?? 0);
+        $qty = max(1, (float) ($get('staging_quantity') ?? 1));
+        $lineSubtotal = $unitPrice * $qty;
+        $discountRate = (float) ($get('staging_discount') ?? 0);
+        $taxRate = (float) ($get('staging_tax') ?? 0);
+        $discountAmountInput = (float) ($get('staging_discount_amount') ?? 0);
+        $taxAmountInput = (float) ($get('staging_tax_amount') ?? 0);
+        $discountMode = $get('discount_mode') ?? 'percent';
+
+        $set('staging_line_subtotal', $lineSubtotal);
+
+        if ($discountMode === 'amount' && $lineSubtotal > 0) {
+            $discountAmountInput = min(max(0, $discountAmountInput), $lineSubtotal);
+            $discountRate = ($discountAmountInput / $lineSubtotal) * 100;
+            $set('staging_discount', round(min(100, $discountRate), 6));
+        }
+
+        $discountAmount = $lineSubtotal * ($discountRate / 100);
+        $taxableLine = max(0, $lineSubtotal - $discountAmount);
+
+        if ($discountMode === 'amount' && $taxableLine > 0) {
+            $taxAmountInput = min(max(0, $taxAmountInput), $lineSubtotal);
+            $taxRate = ($taxAmountInput / $taxableLine) * 100;
+            $set('staging_tax', round(min(100, $taxRate), 6));
+        }
+
+        $taxAmount = $discountMode === 'amount'
+            ? $taxAmountInput
+            : ($taxableLine * ($taxRate / 100));
+        $lineTotal = $taxableLine + $taxAmount;
+
+        if ($discountMode !== 'amount') {
+            $set('staging_discount_amount', round($discountAmount, 2));
+            $set('staging_tax_amount', round($taxAmount, 2));
+        }
+
+        $set('staging_line_total', round($lineTotal, 2));
     }
 
     private static function updateLineTotalDisplay(callable $set, callable $get): void
