@@ -28,7 +28,7 @@ class SaleReturnForm
             ->components([
                 Select::make('product_id')
                     ->label('Product')
-                    ->placeholder('Search by product name or SKU')
+                    ->placeholder('Search by product name')
                     ->searchable()
                     ->getSearchResultsUsing(fn (string $search): array => self::productOptions($search))
                     ->getOptionLabelUsing(fn ($value): ?string => self::productLabel(Product::query()->withoutTrashed()->find($value)))
@@ -208,7 +208,7 @@ class SaleReturnForm
             return null;
         }
 
-        return trim($product->name.($product->sku ? " ({$product->sku})" : ''));
+        return (string) $product->name;
     }
 
     /**

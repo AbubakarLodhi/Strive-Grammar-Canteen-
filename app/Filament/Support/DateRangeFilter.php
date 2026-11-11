@@ -24,11 +24,11 @@ class DateRangeFilter
                 return $query
                     ->when(
                         filled($data['from_date'] ?? null),
-                        fn (Builder $query) => $query->whereDate($column, '>=', self::normalize($data['from_date'])),
+                        fn (Builder $query) => $query->where($column, '>=', self::normalize($data['from_date'])),
                     )
                     ->when(
                         filled($data['to_date'] ?? null),
-                        fn (Builder $query) => $query->whereDate($column, '<=', self::normalize($data['to_date'])),
+                        fn (Builder $query) => $query->where($column, '<=', self::normalize($data['to_date'])),
                     );
             });
     }
@@ -36,10 +36,8 @@ class DateRangeFilter
     /**
      * Filament's date picker commits the clicked day with the current time
      * of day attached (e.g. "2026-10-09 00:08:09") instead of midnight.
-     * whereDate() only normalizes the column, not this bound value, so that
-     * leftover time pushes a ">=" lower bound past midnight and silently
-     * excludes rows dated exactly on that day. Always pass it through here
-     * first so it's a plain Y-m-d string before it reaches a query.
+     * Always normalize to a plain Y-m-d string, then compare the column
+     * directly (not whereDate) so date/datetime indexes stay usable.
      */
     private static function normalize(mixed $date): string
     {

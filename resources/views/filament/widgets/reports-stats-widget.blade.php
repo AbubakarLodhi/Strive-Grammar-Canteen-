@@ -189,7 +189,7 @@
                                         <span class="mt-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-amber-100 text-xs font-bold text-amber-700 dark:bg-amber-900/40 dark:text-amber-200">{{ $index + 1 }}</span>
                                         <div>
                                             <p class="text-sm font-semibold text-slate-900 dark:text-slate-100">{{ $row['name'] }}</p>
-                                            <p class="text-xs text-slate-500 dark:text-slate-400">{{ $row['product'] }} • SKU: {{ $row['sku'] }}</p>
+                                            <p class="text-xs text-slate-500 dark:text-slate-400">{{ $row['product'] }}</p>
                                         </div>
                                     </div>
                                     <div class="text-right">

@@ -2,9 +2,9 @@
 
 namespace App\Filament\Resources\Sales\Schemas;
 
+use App\Models\Sale;
 use App\Services\PaymentLedgerService;
 use Filament\Infolists\Components\RepeatableEntry;
-
 use Filament\Infolists\Components\TextEntry;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
@@ -27,13 +27,13 @@ class SaleInfolist
                             ->label('Status')
                             ->badge()
                             ->formatStateUsing(fn (?string $state): string => match ($state) {
-                                \App\Models\Sale::STATUS_DRAFT => 'Draft',
-                                \App\Models\Sale::STATUS_POSTED => 'Posted',
+                                Sale::STATUS_DRAFT => 'Draft',
+                                Sale::STATUS_POSTED => 'Posted',
                                 default => (string) $state,
                             })
                             ->color(fn (?string $state): string => match ($state) {
-                                \App\Models\Sale::STATUS_DRAFT => 'warning',
-                                \App\Models\Sale::STATUS_POSTED => 'success',
+                                Sale::STATUS_DRAFT => 'warning',
+                                Sale::STATUS_POSTED => 'success',
                                 default => 'gray',
                             }),
 
@@ -91,9 +91,6 @@ class SaleInfolist
                                 TextEntry::make('product.name')
                                     ->label('Product'),
 
-                                TextEntry::make('product.sku')
-                                    ->label('SKU'),
-
                                 TextEntry::make('quantity')
                                     ->label('Quantity'),
 
@@ -103,11 +100,11 @@ class SaleInfolist
 
                                 TextEntry::make('discount')
                                     ->label('Discount (%)')
-                                    ->formatStateUsing(fn ($state) => number_format((float) ($state ?? 0), 2) . '%'),
+                                    ->formatStateUsing(fn ($state) => number_format((float) ($state ?? 0), 2).'%'),
 
                                 TextEntry::make('tax')
                                     ->label('Tax (%)')
-                                    ->formatStateUsing(fn ($state) => number_format((float) ($state ?? 0), 2) . '%'),
+                                    ->formatStateUsing(fn ($state) => number_format((float) ($state ?? 0), 2).'%'),
 
                                 TextEntry::make('line_total')
                                     ->label('Line Total')

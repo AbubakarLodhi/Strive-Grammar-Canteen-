@@ -126,8 +126,10 @@ class SalesTable
 
                 TextColumn::make('items_count')
                     ->label('Line items')
-                    ->counts('items')
-                    ->sortable()
+                    ->getStateUsing(fn (Sale $record): int => $record->relationLoaded('items')
+                        ? $record->items->count()
+                        : $record->items()->count())
+                    ->sortable(false)
                     ->toggleable(isToggledHiddenByDefault: true),
 
                 TextColumn::make('subtotal')
@@ -208,7 +210,7 @@ class SalesTable
                         default => 'gray',
                     })
                     ->getStateUsing(function (Sale $record) {
-                        if (! $record->returns()->exists()) {
+                        if (! $record->hasReturns()) {
                             return '-';
                         }
 
@@ -331,7 +333,7 @@ class SalesTable
                     ->tooltip('Edit')
                     ->visible(fn (Sale $record) => auth(Filament::getCurrentPanel()->getAuthGuard())
                         ->user()?->hasPermissionTo('sales.update', Filament::getCurrentPanel()->getAuthGuard())
-                        && (! $record->returns()->exists() || self::hasReturnableItems($record))
+                        && (! $record->hasReturns() || self::hasReturnableItems($record))
                     ),
 
                 DeleteAction::make()

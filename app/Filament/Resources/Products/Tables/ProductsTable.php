@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\Products\Tables;
 
 use App\Filament\Resources\Products\ProductResource;
+use App\Filament\Resources\ProductVariants\ProductVariantResource;
 use App\Models\PermissionModule;
 use App\Models\Product;
 use App\Models\ProductVariant;
@@ -28,11 +29,11 @@ class ProductsTable
         }
 
         if (Storage::disk('public')->exists($photoUrl)) {
-            return asset('storage/' . $photoUrl);
+            return asset('storage/'.$photoUrl);
         }
 
         // Fallback: image was stored on Supabase S3
-        return 'https://hdojyhoqzioxnbkuxjno.supabase.co/storage/v1/object/public/product-images/' . $photoUrl;
+        return 'https://hdojyhoqzioxnbkuxjno.supabase.co/storage/v1/object/public/product-images/'.$photoUrl;
     }
 
     public static function configure(Table $table): Table
@@ -40,23 +41,21 @@ class ProductsTable
         return $table
             ->columns([
                 TextColumn::make('name')
-                    ->searchable()
+                    ->searchable(query: function ($query, string $search) {
+                        return $query->where(function ($builder) use ($search): void {
+                            $builder
+                                ->where('name', 'like', "%{$search}%")
+                                ->orWhere('sku', 'like', "%{$search}%");
+                        });
+                    })
                     ->limit(30)
                     ->sortable(),
                 ImageColumn::make('product_image')
                     ->label('Image')
                     ->size(50)
                     ->square()
-                    ->getStateUsing(fn (Product $record) =>
-                        self::resolveImageUrl($record->productImage?->photo_url)
+                    ->getStateUsing(fn (Product $record) => self::resolveImageUrl($record->productImage?->photo_url)
                     ),
-
-
-
-
-
-                TextColumn::make('sku')
-                    ->searchable(),
 
                 TextColumn::make('type')
                     ->toggleable(isToggledHiddenByDefault: true)
@@ -66,9 +65,9 @@ class ProductsTable
                     ->toggleable(isToggledHiddenByDefault: true)
                     ->badge(),
 
-//                TextColumn::make('selling_price')
-//                    ->money()
-//                    ->sortable(),
+                //                TextColumn::make('selling_price')
+                //                    ->money()
+                //                    ->sortable(),
 
                 IconColumn::make('is_active')
                     ->boolean()
@@ -81,10 +80,10 @@ class ProductsTable
                     ->toggleable(isToggledHiddenByDefault: true)
                     ->searchable(),
 
-//                TextColumn::make('business.name')
-//                    ->label('Business')
-//                    ->sortable()
-//                    ->searchable(),
+                //                TextColumn::make('business.name')
+                //                    ->label('Business')
+                //                    ->sortable()
+                //                    ->searchable(),
 
                 TextColumn::make('category.name')
                     ->label('Category')
@@ -103,13 +102,12 @@ class ProductsTable
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
-            ->recordUrl(fn (Product $record) =>
-            auth(Filament::getCurrentPanel()->getAuthGuard())
+            ->recordUrl(fn (Product $record) => auth(Filament::getCurrentPanel()->getAuthGuard())
                 ->user()
                 ?->hasPermissionTo('products.update', Filament::getCurrentPanel()->getAuthGuard())
                 ? ProductResource::getUrl('edit', [
-                'record' => $record,
-            ])
+                    'record' => $record,
+                ])
                 : null
             )
             ->recordActions([
@@ -118,12 +116,11 @@ class ProductsTable
                     ->icon('heroicon-s-eye')
                     ->label('')
                     ->tooltip('View Variants')
-                    ->url(fn ($record) =>
-                    \App\Filament\Resources\ProductVariants\ProductVariantResource::getUrl('index', [
-                        'product_id'     => $record->id,
+                    ->url(fn ($record) => ProductVariantResource::getUrl('index', [
+                        'product_id' => $record->id,
                         'brand_model_id' => $record->brand_model_id,
-                        'brand_id'       => $record->brand_id,
-                        'category_id'    => $record->category_id,
+                        'brand_id' => $record->brand_id,
+                        'category_id' => $record->category_id,
                     ])
                     )
                     // ✅ SHOW ONLY IF VARIANTS EXIST FOR THIS PRODUCT
@@ -133,7 +130,7 @@ class ProductsTable
                         }
 
                         $guard = Filament::getCurrentPanel()->getAuthGuard();
-                        $user  = Auth::guard($guard)->user();
+                        $user = Auth::guard($guard)->user();
 
                         if (! PermissionModule::isEnabledForCurrentMerchant('products')) {
                             return false;

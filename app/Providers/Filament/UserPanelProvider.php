@@ -4,7 +4,6 @@ namespace App\Providers\Filament;
 
 use App\Filament\Auth\Login;
 use App\Filament\Pages\Dashboard;
-use App\Filament\Support\SalesListTotalRenderHook;
 use App\Http\Middleware\EnsureStaffIsVerified;
 use App\Http\Middleware\SetPanelAuthDefaults;
 use Filament\Enums\ThemeMode;
@@ -115,6 +114,6 @@ class UserPanelProvider extends PanelProvider
             )
             ->globalSearch(false);
 
-        return SalesListTotalRenderHook::register($panel);
+        return $panel;
     }
 }

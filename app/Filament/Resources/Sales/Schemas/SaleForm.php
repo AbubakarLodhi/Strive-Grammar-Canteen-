@@ -266,12 +266,15 @@ class SaleForm
                                     Select::make('staging_product_id')
                                         ->label('Product')
                                         ->searchable()
-                                        ->preload()
                                         ->live()
-                                        ->reactive()
                                         ->dehydrated(false)
-                                        ->options(fn (): array => self::productOptions())
-                                        ->getSearchResultsUsing(fn (string $search): array => self::productOptions($search))
+                                        ->options(fn ($livewire): array => self::productOptions(
+                                            excludeSaleId: self::editingSaleId($livewire),
+                                        ))
+                                        ->getSearchResultsUsing(fn (string $search, $livewire): array => self::productOptions(
+                                            $search,
+                                            excludeSaleId: self::editingSaleId($livewire),
+                                        ))
                                         ->disableOptionWhen(
                                             fn (string $value, $livewire): bool => ! ProductStockAvailability::isProductIdAvailable(
                                                 $value,
@@ -393,7 +396,6 @@ class SaleForm
                                         ->label('Branch')
                                         ->searchable()
                                         ->live()
-                                        ->reactive()
                                         ->allowHtml()
                                         ->dehydrated(false)
                                         ->getOptionLabelUsing(fn ($value) => Branch::withTrashed()->find($value)?->name ?? $value)
@@ -469,7 +471,6 @@ class SaleForm
                                         ->label('Product Variant')
                                         ->searchable()
                                         ->live()
-                                        ->reactive()
                                         ->dehydrated(false)
                                         ->visible(fn (callable $get): bool => self::productHasVariants($get('staging_product_id')))
                                         ->options(function (callable $get): array {
@@ -770,8 +771,9 @@ class SaleForm
 
                     Repeater::make('items')
                         ->afterStateUpdated(function ($state, callable $set, callable $get, $livewire) {
-                            $livewire->resetValidation();
-                            $livewire->resetErrorBag();
+                            $livewire->resetValidation('data.items');
+                            $livewire->resetErrorBag('data.items');
+                            self::recalcTotals($set, $get);
                         })
                         ->schema([
 
@@ -816,12 +818,15 @@ class SaleForm
                             Select::make('product_id')
                                 ->label('Product')
                                 ->searchable()
-                                ->preload()
                                 ->required()
                                 ->live()
-                                ->reactive()
-                                ->options(fn (): array => self::productOptions())
-                                ->getSearchResultsUsing(fn (string $search): array => self::productOptions($search))
+                                ->options(fn ($livewire): array => self::productOptions(
+                                    excludeSaleId: self::editingSaleId($livewire),
+                                ))
+                                ->getSearchResultsUsing(fn (string $search, $livewire): array => self::productOptions(
+                                    $search,
+                                    excludeSaleId: self::editingSaleId($livewire),
+                                ))
                                 ->disableOptionWhen(
                                     fn (string $value, $livewire): bool => ! ProductStockAvailability::isProductIdAvailable(
                                         $value,
@@ -966,7 +971,6 @@ class SaleForm
                                 ->searchable()
                                 ->required()
                                 ->live()
-                                ->reactive()
                                 ->allowHtml()
                                 ->getOptionLabelUsing(fn ($value) => Branch::withTrashed()->find($value)?->name ?? $value)
                                 ->options(function (callable $get): array {
@@ -1051,7 +1055,6 @@ class SaleForm
                                 ->label('Product Variant')
                                 ->searchable()
                                 ->live()
-                                ->reactive()
                                 ->visible(fn (callable $get): bool => self::productHasVariants($get('product_id')))
                                 ->required(fn (callable $get): bool => self::productHasVariants($get('product_id')))
                                 ->options(function (callable $get, $livewire): array {
@@ -1482,9 +1485,7 @@ class SaleForm
 
                             $set('items', $items);
                             self::recalcTotals($set, $get);
-                        })
-                        ->afterStateUpdated(fn (callable $set, callable $get) => self::recalcTotals($set, $get)
-                        ),
+                        }),
                 ]),
 
             /* ===========================
@@ -1673,11 +1674,12 @@ class SaleForm
         return (bool) $merchant?->logo;
     }
 
-    private static function productOptions(?string $search = null): array
+    private static function productOptions(?string $search = null, ?string $excludeSaleId = null): array
     {
         return ProductStockAvailability::saleProductOptions(
             self::merchantId(),
             $search,
+            $excludeSaleId,
         );
     }
 

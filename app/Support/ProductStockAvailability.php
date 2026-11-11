@@ -11,9 +11,17 @@ use Illuminate\Support\Facades\DB;
 
 class ProductStockAvailability
 {
+    /** @var array<string, bool> */
+    private static array $productAvailabilityCache = [];
+
     public static function productTracksInventory(Product $product): bool
     {
         return (bool) $product->track_inventory && $product->type !== 'service';
+    }
+
+    public static function clearRequestCaches(): void
+    {
+        self::$productAvailabilityCache = [];
     }
 
     public static function defaultVariantIdForProduct(?string $productId): ?string
@@ -238,11 +246,19 @@ class ProductStockAvailability
 
     public static function isProductIdAvailable(string $productId, ?string $branchId = null, ?string $excludeSaleId = null): bool
     {
+        $cacheKey = $productId.'|'.($branchId ?? '').'|'.($excludeSaleId ?? '');
+
+        if (array_key_exists($cacheKey, self::$productAvailabilityCache)) {
+            return self::$productAvailabilityCache[$cacheKey];
+        }
+
         $product = Product::query()
             ->select(['id', 'track_inventory', 'type'])
             ->find($productId);
 
-        return $product ? self::isProductAvailable($product, $branchId, $excludeSaleId) : false;
+        return self::$productAvailabilityCache[$cacheKey] = $product
+            ? self::isProductAvailable($product, $branchId, $excludeSaleId)
+            : false;
     }
 
     public static function isVariantIdAvailable(
@@ -402,15 +418,15 @@ class ProductStockAvailability
         );
     }
 
-    public static function productOptionLabel(Product $product, ?string $branchId = null): string
+    public static function productOptionLabel(Product $product, ?string $branchId = null, ?float $stock = null): string
     {
-        $label = "{$product->name} ({$product->sku})";
+        $label = (string) $product->name;
 
         if (! self::productTracksInventory($product)) {
             return $label;
         }
 
-        $quantity = self::productTotalStock($product, $branchId);
+        $quantity = $stock ?? self::productTotalStock($product, $branchId);
 
         if ($quantity <= 0) {
             return "{$label} — Out of stock";
@@ -419,20 +435,20 @@ class ProductStockAvailability
         return $label.' — Qty: '.self::formatQuantity($quantity);
     }
 
-    public static function variantOptionLabel(ProductVariant $variant, ?string $branchId = null): string
+    public static function variantOptionLabel(ProductVariant $variant, ?string $branchId = null, ?float $stock = null): string
     {
         $label = (string) ($variant->name ?? $variant->sku ?? $variant->id);
 
         $variant->loadMissing('product');
 
         if ($variant->product && self::productTracksInventory($variant->product)) {
-            $stock = self::variantStock($variant->id, $branchId);
+            $quantity = $stock ?? self::variantStock($variant->id, $branchId);
 
-            if ($stock <= 0) {
+            if ($quantity <= 0) {
                 return "{$label} — Out of stock";
             }
 
-            return "{$label} (Stock: ".self::formatQuantity($stock).')';
+            return "{$label} (Stock: ".self::formatQuantity($quantity).')';
         }
 
         return $label;
@@ -549,12 +565,12 @@ class ProductStockAvailability
     }
 
     /**
-     * @param  list<string>  $alwaysIncludeProductIds
      * @return array<string, string>
      */
     public static function saleProductOptions(
         ?string $merchantId,
         ?string $search = null,
+        ?string $excludeSaleId = null,
     ): array {
         if (! filled($merchantId)) {
             return [];
@@ -574,16 +590,28 @@ class ProductStockAvailability
             });
         }
 
-        $query->orderBy('products.name');
+        $products = $query
+            ->orderBy('products.name')
+            ->limit(50)
+            ->get(['products.id', 'products.name', 'products.sku', 'products.track_inventory', 'products.type']);
 
-        if (filled($search)) {
-            $query->limit(50);
+        $stocks = self::productStockMap($products, null, $excludeSaleId);
+
+        foreach ($products as $product) {
+            $cacheKey = $product->id.'||'.($excludeSaleId ?? '');
+
+            if (! self::productTracksInventory($product)) {
+                self::$productAvailabilityCache[$cacheKey] = true;
+
+                continue;
+            }
+
+            self::$productAvailabilityCache[$cacheKey] = ($stocks[$product->id] ?? 0) > 0;
         }
 
-        return $query
-            ->get(['products.id', 'products.name', 'products.sku', 'products.track_inventory', 'products.type'])
+        return $products
             ->mapWithKeys(fn (Product $product) => [
-                $product->id => self::productOptionLabel($product),
+                $product->id => self::productOptionLabel($product, null, $stocks[$product->id] ?? null),
             ])
             ->all();
     }
@@ -595,28 +623,227 @@ class ProductStockAvailability
         string $productId,
         ?string $branchId = null,
     ): array {
-        return ProductVariant::query()
+        $variants = ProductVariant::query()
             ->withoutTrashed()
             ->where('product_id', $productId)
             ->where('is_active', true)
+            ->with('product:id,track_inventory,type')
             ->limit(50)
-            ->get()
+            ->get();
+
+        $stocks = self::variantStockMap($variants->pluck('id'), $branchId);
+
+        return $variants
             ->mapWithKeys(fn (ProductVariant $variant) => [
-                $variant->id => self::variantOptionLabel($variant, $branchId),
+                $variant->id => self::variantOptionLabel(
+                    $variant,
+                    $branchId,
+                    $stocks[$variant->id] ?? null,
+                ),
             ])
             ->all();
+    }
+
+    /**
+     * @param  Collection<int, Product>  $products
+     * @return array<string, float>
+     */
+    public static function productStockMap(
+        Collection $products,
+        ?string $branchId = null,
+        ?string $excludeSaleId = null,
+    ): array {
+        $result = [];
+
+        if ($products->isEmpty()) {
+            return $result;
+        }
+
+        $tracked = $products->filter(fn (Product $product): bool => self::productTracksInventory($product));
+
+        foreach ($products as $product) {
+            if (! self::productTracksInventory($product)) {
+                $result[$product->id] = PHP_FLOAT_MAX;
+            }
+        }
+
+        if ($tracked->isEmpty()) {
+            return $result;
+        }
+
+        $productIds = $tracked->pluck('id')->map(fn ($id): string => (string) $id)->all();
+
+        $variants = DB::table('product_variants')
+            ->whereIn('product_id', $productIds)
+            ->where('is_active', true)
+            ->whereNull('deleted_at')
+            ->get(['id', 'product_id']);
+
+        $variantsByProduct = $variants->groupBy('product_id');
+        $variantIds = $variants->pluck('id')->map(fn ($id): string => (string) $id);
+        $variantStocks = self::variantStockMap($variantIds, $branchId, $excludeSaleId);
+
+        $productsWithoutVariants = $tracked
+            ->filter(fn (Product $product): bool => ! $variantsByProduct->has($product->id))
+            ->pluck('id')
+            ->map(fn ($id): string => (string) $id)
+            ->values();
+
+        $productLevelStocks = self::productLevelStockMap($productsWithoutVariants, $branchId, $excludeSaleId);
+
+        foreach ($tracked as $product) {
+            $productVariants = $variantsByProduct->get($product->id);
+
+            if ($productVariants === null || $productVariants->isEmpty()) {
+                $result[$product->id] = $productLevelStocks[$product->id] ?? 0;
+
+                continue;
+            }
+
+            $result[$product->id] = (float) $productVariants->sum(
+                fn ($variant): float => $variantStocks[(string) $variant->id] ?? 0.0
+            );
+        }
+
+        return $result;
     }
 
     /**
      * @param  Collection<int, string>  $variantIds
      * @return array<string, float>
      */
-    public static function variantStockMap(Collection $variantIds, ?string $branchId = null): array
-    {
-        return $variantIds
+    public static function variantStockMap(
+        Collection $variantIds,
+        ?string $branchId = null,
+        ?string $excludeSaleId = null,
+    ): array {
+        $ids = $variantIds
+            ->filter(fn ($id): bool => filled($id))
+            ->map(fn ($id): string => (string) $id)
+            ->unique()
+            ->values();
+
+        if ($ids->isEmpty()) {
+            return [];
+        }
+
+        $purchasedQuery = DB::table('purchase_item_variants as piv')
+            ->join('purchase_items as pi', 'pi.id', '=', 'piv.purchase_item_id')
+            ->join('purchases as p', 'p.id', '=', 'pi.purchase_id')
+            ->whereIn('piv.product_variant_id', $ids->all())
+            ->whereNull('p.deleted_at')
+            ->when(filled($branchId), fn ($query) => $query->where('pi.branch_id', $branchId))
+            ->groupBy('piv.product_variant_id')
+            ->selectRaw('piv.product_variant_id as variant_id, SUM(piv.quantity) as total');
+
+        $purchased = $purchasedQuery->pluck('total', 'variant_id');
+
+        $soldQuery = DB::table('sale_item_variants as siv')
+            ->join('sale_items as si', 'si.id', '=', 'siv.sale_item_id')
+            ->join('sales as s', 's.id', '=', 'si.sale_id')
+            ->whereIn('siv.product_variant_id', $ids->all())
+            ->where('s.status', Sale::STATUS_POSTED)
+            ->whereNull('s.deleted_at')
+            ->when(filled($branchId), fn ($query) => $query->where('si.branch_id', $branchId))
+            ->when(filled($excludeSaleId), fn ($query) => $query->where('s.id', '!=', $excludeSaleId))
+            ->groupBy('siv.product_variant_id')
+            ->selectRaw('siv.product_variant_id as variant_id, SUM(siv.quantity) as total');
+
+        $sold = $soldQuery->pluck('total', 'variant_id');
+
+        return $ids
             ->mapWithKeys(fn (string $variantId): array => [
-                $variantId => self::variantStock($variantId, $branchId),
+                $variantId => max(
+                    0,
+                    (float) ($purchased[$variantId] ?? 0) - (float) ($sold[$variantId] ?? 0)
+                ),
             ])
+            ->all();
+    }
+
+    /**
+     * @param  Collection<int, string>  $productIds
+     * @return array<string, float>
+     */
+    public static function productLevelStockMap(
+        Collection $productIds,
+        ?string $branchId = null,
+        ?string $excludeSaleId = null,
+    ): array {
+        $ids = $productIds
+            ->filter(fn ($id): bool => filled($id))
+            ->map(fn ($id): string => (string) $id)
+            ->unique()
+            ->values();
+
+        if ($ids->isEmpty()) {
+            return [];
+        }
+
+        $purchasedFromVariants = DB::table('purchase_item_variants as piv')
+            ->join('purchase_items as pi', 'pi.id', '=', 'piv.purchase_item_id')
+            ->join('purchases as p', 'p.id', '=', 'pi.purchase_id')
+            ->join('product_variants as pv', 'pv.id', '=', 'piv.product_variant_id')
+            ->whereIn('pv.product_id', $ids->all())
+            ->whereNull('p.deleted_at')
+            ->when(filled($branchId), fn ($query) => $query->where('pi.branch_id', $branchId))
+            ->groupBy('pv.product_id')
+            ->selectRaw('pv.product_id as product_id, SUM(piv.quantity) as total')
+            ->pluck('total', 'product_id');
+
+        $purchasedWithoutVariants = DB::table('purchase_items as pi')
+            ->join('purchases as p', 'p.id', '=', 'pi.purchase_id')
+            ->whereIn('pi.product_id', $ids->all())
+            ->whereNull('p.deleted_at')
+            ->whereNotExists(fn ($query) => $query->selectRaw('1')
+                ->from('purchase_item_variants as piv')
+                ->whereColumn('piv.purchase_item_id', 'pi.id'))
+            ->when(filled($branchId), fn ($query) => $query->where('pi.branch_id', $branchId))
+            ->groupBy('pi.product_id')
+            ->selectRaw('pi.product_id as product_id, SUM(pi.quantity) as total')
+            ->pluck('total', 'product_id');
+
+        $soldFromVariants = DB::table('sale_item_variants as siv')
+            ->join('sale_items as si', 'si.id', '=', 'siv.sale_item_id')
+            ->join('sales as s', 's.id', '=', 'si.sale_id')
+            ->join('product_variants as pv', 'pv.id', '=', 'siv.product_variant_id')
+            ->whereIn('pv.product_id', $ids->all())
+            ->where('s.status', Sale::STATUS_POSTED)
+            ->whereNull('s.deleted_at')
+            ->when(filled($branchId), fn ($query) => $query->where('si.branch_id', $branchId))
+            ->when(filled($excludeSaleId), fn ($query) => $query->where('s.id', '!=', $excludeSaleId))
+            ->groupBy('pv.product_id')
+            ->selectRaw('pv.product_id as product_id, SUM(siv.quantity) as total')
+            ->pluck('total', 'product_id');
+
+        $soldWithoutVariants = DB::table('sale_items as si')
+            ->join('sales as s', 's.id', '=', 'si.sale_id')
+            ->whereIn('si.product_id', $ids->all())
+            ->where('s.status', Sale::STATUS_POSTED)
+            ->whereNull('s.deleted_at')
+            ->whereNotExists(fn ($query) => $query->selectRaw('1')
+                ->from('sale_item_variants as siv')
+                ->whereColumn('siv.sale_item_id', 'si.id'))
+            ->when(filled($branchId), fn ($query) => $query->where('si.branch_id', $branchId))
+            ->when(filled($excludeSaleId), fn ($query) => $query->where('s.id', '!=', $excludeSaleId))
+            ->groupBy('si.product_id')
+            ->selectRaw('si.product_id as product_id, SUM(si.quantity) as total')
+            ->pluck('total', 'product_id');
+
+        return $ids
+            ->mapWithKeys(function (string $productId) use (
+                $purchasedFromVariants,
+                $purchasedWithoutVariants,
+                $soldFromVariants,
+                $soldWithoutVariants,
+            ): array {
+                $purchased = (float) ($purchasedFromVariants[$productId] ?? 0)
+                    + (float) ($purchasedWithoutVariants[$productId] ?? 0);
+                $sold = (float) ($soldFromVariants[$productId] ?? 0)
+                    + (float) ($soldWithoutVariants[$productId] ?? 0);
+
+                return [$productId => max(0, $purchased - $sold)];
+            })
             ->all();
     }
 }

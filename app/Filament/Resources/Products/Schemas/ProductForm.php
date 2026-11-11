@@ -1,17 +1,18 @@
 <?php
+
 //
-//namespace App\Filament\Resources\Products\Schemas;
+// namespace App\Filament\Resources\Products\Schemas;
 //
-//use Filament\Facades\Filament;
-//use Filament\Forms\Components\Hidden;
-//use Filament\Forms\Components\Select;
-//use Filament\Forms\Components\TextInput;
-//use Filament\Forms\Components\Textarea;
-//use Filament\Forms\Components\Toggle;
-//use Filament\Schemas\Schema;
+// use Filament\Facades\Filament;
+// use Filament\Forms\Components\Hidden;
+// use Filament\Forms\Components\Select;
+// use Filament\Forms\Components\TextInput;
+// use Filament\Forms\Components\Textarea;
+// use Filament\Forms\Components\Toggle;
+// use Filament\Schemas\Schema;
 //
-//class ProductForm
-//{
+// class ProductForm
+// {
 //    public static function configure(Schema $schema): Schema
 //    {
 //        return $schema
@@ -35,9 +36,9 @@
 //                    ->required()
 //                    ->maxLength(255),
 //
-////                TextInput::make('sku')
-////                    ->required()
-////                    ->maxLength(255),
+// //                TextInput::make('sku')
+// //                    ->required()
+// //                    ->maxLength(255),
 //
 //                Textarea::make('description')
 //                    ->columnSpanFull(),
@@ -75,7 +76,7 @@
 //    ->prefix('PKR')
 //    ->nullable(),
 
-//TextInput::make('selling_price')
+// TextInput::make('selling_price')
 //    ->label('Selling Price')
 //    ->numeric()
 //    ->prefix('PKR')
@@ -85,15 +86,15 @@
 //                /* -------------------------
 //                 | Pricing
 //                 |--------------------------*/
-////                TextInput::make('purchase_price')
-////                    ->numeric()
-////                    ->prefix('$')
-////                    ->visible(fn ($get) => $get('type') === 'stock'),
-////
-////                TextInput::make('selling_price')
-////                    ->numeric()
-////                    ->prefix('$')
-////                    ->visible(fn ($get) => ! $get('is_variable_price')),
+// //                TextInput::make('purchase_price')
+// //                    ->numeric()
+// //                    ->prefix('$')
+// //                    ->visible(fn ($get) => $get('type') === 'stock'),
+// //
+// //                TextInput::make('selling_price')
+// //                    ->numeric()
+// //                    ->prefix('$')
+// //                    ->visible(fn ($get) => ! $get('is_variable_price')),
 //
 //                /* -------------------------
 //                 | Relationships
@@ -136,32 +137,33 @@
 //                    ->required(),
 //            ]);
 //    }
-//}
-
+// }
 
 namespace App\Filament\Resources\Products\Schemas;
 
+use App\Models\Branch;
+use App\Models\Merchant;
+use App\Models\User;
+use App\Support\ProductUnit;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
-use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Str;
 
 class ProductForm
 {
     public static function configure(Schema $schema): Schema
     {
         return $schema->components([
-
 
             Section::make('Availability')
                 ->description('Select businesses and specific branches where this product will be available.')
@@ -172,35 +174,35 @@ class ProductForm
                     /* =========================
                      | BUSINESS SELECT
                      |=========================*/
-//                    Select::make('businesses')
-//                        ->label('Businesses')
-//                        ->relationship(
-//                            name: 'businesses',
-//                            titleAttribute: 'name',
-//                            modifyQueryUsing: function (Builder $query) {
-//                                $user = Filament::auth()->user();
-//                                $query->where('status', true);
-//                                $merchantId = match (true) {
-//                                    $user instanceof \App\Models\Merchant => $user->id,
-//                                    $user instanceof \App\Models\User     => $user->merchant_id,
-//                                    default                               => null,
-//                                };
-//
-//                                if ($merchantId) {
-//                                    $query->where('merchant_id', $merchantId);
-//                                }
-//                            }
-//                        )
-//                        ->multiple()
-//                        ->searchable()
-//                        ->preload()
-//                        ->required()
-//                        ->reactive()
-//                        ->live()
-//                        ->afterStateUpdated(function ($state, callable $set, callable $get, $livewire) {
-//                            $livewire->resetValidation('data.businesses');
-//                             $livewire->resetErrorBag('data.businesses');
-//                }),
+                    //                    Select::make('businesses')
+                    //                        ->label('Businesses')
+                    //                        ->relationship(
+                    //                            name: 'businesses',
+                    //                            titleAttribute: 'name',
+                    //                            modifyQueryUsing: function (Builder $query) {
+                    //                                $user = Filament::auth()->user();
+                    //                                $query->where('status', true);
+                    //                                $merchantId = match (true) {
+                    //                                    $user instanceof \App\Models\Merchant => $user->id,
+                    //                                    $user instanceof \App\Models\User     => $user->merchant_id,
+                    //                                    default                               => null,
+                    //                                };
+                    //
+                    //                                if ($merchantId) {
+                    //                                    $query->where('merchant_id', $merchantId);
+                    //                                }
+                    //                            }
+                    //                        )
+                    //                        ->multiple()
+                    //                        ->searchable()
+                    //                        ->preload()
+                    //                        ->required()
+                    //                        ->reactive()
+                    //                        ->live()
+                    //                        ->afterStateUpdated(function ($state, callable $set, callable $get, $livewire) {
+                    //                            $livewire->resetValidation('data.businesses');
+                    //                             $livewire->resetErrorBag('data.businesses');
+                    //                }),
 
                     /* =========================
                      | BRANCH SELECT
@@ -215,13 +217,13 @@ class ProductForm
                         ->options(function () {
                             $user = Filament::auth()->user();
 
-                            $branchesQuery = \App\Models\Branch::query()
+                            $branchesQuery = Branch::query()
                                 ->withoutTrashed()
                                 ->with('business')
                                 ->where('is_active', true);
 
                             // Merchant → all branches
-                            if ($user instanceof \App\Models\Merchant) {
+                            if ($user instanceof Merchant) {
                                 $branchesQuery->where('merchant_id', $user->id);
                             }
                             // Staff → only assigned branches
@@ -237,21 +239,19 @@ class ProductForm
                                 ->orderBy('name')
                                 ->get()
                                 ->groupBy(fn ($branch) => $branch->business?->name ?? 'Other')
-                                ->map(fn ($group) =>
-                                $group->pluck('name', 'id')
-                                    ->map(fn ($name) => '&nbsp;&nbsp;&nbsp;&nbsp;' . e($name)) // 👈 indent
+                                ->map(fn ($group) => $group->pluck('name', 'id')
+                                    ->map(fn ($name) => '&nbsp;&nbsp;&nbsp;&nbsp;'.e($name)) // 👈 indent
                                     ->toArray()
                                 )
                                 ->toArray();
                         })
                         ->getOptionLabelUsing(
-                            fn ($value) => \App\Models\Branch::find($value)?->name
+                            fn ($value) => Branch::find($value)?->name
                         ),
-
 
                 ]),
 
-            \Filament\Schemas\Components\Section::make('Classification')
+            Section::make('Classification')
                 ->columns(4)
                 ->columnSpanFull()
                 ->schema([
@@ -263,9 +263,9 @@ class ProductForm
                                 $user = Filament::auth()->user();
 
                                 $merchantId = match (true) {
-                                    $user instanceof \App\Models\Merchant => $user->id,
-                                    $user instanceof \App\Models\User     => $user->merchant_id,
-                                    default                               => null,
+                                    $user instanceof Merchant => $user->id,
+                                    $user instanceof User => $user->merchant_id,
+                                    default => null,
                                 };
 
                                 $query->whereNull('parent_id');
@@ -287,9 +287,9 @@ class ProductForm
                                 $user = Filament::auth()->user();
 
                                 $merchantId = match (true) {
-                                    $user instanceof \App\Models\Merchant => $user->id,
-                                    $user instanceof \App\Models\User     => $user->merchant_id,
-                                    default                               => null,
+                                    $user instanceof Merchant => $user->id,
+                                    $user instanceof User => $user->merchant_id,
+                                    default => null,
                                 };
 
                                 if ($merchantId) {
@@ -319,14 +319,15 @@ class ProductForm
                                 $user = Filament::auth()->user();
 
                                 $merchantId = match (true) {
-                                    $user instanceof \App\Models\Merchant => $user->id,
-                                    $user instanceof \App\Models\User     => $user->merchant_id,
-                                    default                               => null,
+                                    $user instanceof Merchant => $user->id,
+                                    $user instanceof User => $user->merchant_id,
+                                    default => null,
                                 };
 
                                 // ❌ No merchant → no brands
                                 if (! $merchantId) {
                                     $query->whereRaw('1 = 0');
+
                                     return;
                                 }
 
@@ -337,6 +338,7 @@ class ProductForm
                                 // ❌ No sub-category → show nothing
                                 if (! $subCategoryId) {
                                     $query->whereRaw('1 = 0');
+
                                     return;
                                 }
 
@@ -363,25 +365,27 @@ class ProductForm
                                 $user = Filament::auth()->user();
 
                                 $merchantId = match (true) {
-                                    $user instanceof \App\Models\Merchant => $user->id,
-                                    $user instanceof \App\Models\User     => $user->merchant_id,
-                                    default                               => null,
+                                    $user instanceof Merchant => $user->id,
+                                    $user instanceof User => $user->merchant_id,
+                                    default => null,
                                 };
 
                                 // ❌ No merchant → no models
                                 if (! $merchantId) {
                                     $query->whereRaw('1 = 0');
+
                                     return;
                                 }
 
                                 $query->where('merchant_id', $merchantId);
 
-                                $brandId       = $get('brand_id');
+                                $brandId = $get('brand_id');
                                 $subCategoryId = $get('sub_category_id');
 
                                 // ❌ No brand or no sub-category → show nothing
                                 if (! $brandId || ! $subCategoryId) {
                                     $query->whereRaw('1 = 0');
+
                                     return;
                                 }
 
@@ -398,12 +402,12 @@ class ProductForm
                             }
                         ),
 
-        ]),
+                ]),
 
             /* =========================
              | PRODUCT
              |=========================*/
-            \Filament\Schemas\Components\Section::make('Product')
+            Section::make('Product')
                 ->columnSpanFull()
                 ->schema([
                     Hidden::make('merchant_id')
@@ -411,13 +415,12 @@ class ProductForm
                             $user = Filament::auth()->user();
 
                             return match (true) {
-                                $user instanceof \App\Models\Merchant => $user->id,
-                                $user instanceof \App\Models\User     => $user->merchant_id,
-                                default                               => null,
+                                $user instanceof Merchant => $user->id,
+                                $user instanceof User => $user->merchant_id,
+                                default => null,
                             };
                         })
                         ->required(),
-
 
                     TextInput::make('name')
                         ->label('Product Name')
@@ -441,59 +444,51 @@ class ProductForm
                         ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/webp'])
                         ->dehydrated(false),
 
-
-                    TextInput::make('sku')
-                        ->label('SKU')
-                        ->disabled()
-                        ->dehydrated(false)
-                        ->helperText('Auto-generated on save.'),
-
                     Textarea::make('description')
                         ->maxLength(255)
                         ->columnSpanFull(),
 
-                    \Filament\Schemas\Components\Section::make('Basics')
+                    Section::make('Basics')
                         ->columns(2)
                         ->schema([
-//                            Select::make('business_id')
-//                                ->label('Business')
-//                                ->relationship(
-//                                    name: 'business',
-//                                    titleAttribute: 'name',
-//                                    modifyQueryUsing: function (Builder $query) {
-//                                        $user = Filament::auth()->user();
-//
-//                                        if ($user instanceof Admin) {
-//                                            return;
-//                                        }
-//
-//                                        // Merchant → only their businesses
-//                                        $query->where('merchant_id', $user->id);
-//                                    }
-//                                )
-//                                ->preload()
-//                                ->searchable()
-//                                ->required(),
+                            //                            Select::make('business_id')
+                            //                                ->label('Business')
+                            //                                ->relationship(
+                            //                                    name: 'business',
+                            //                                    titleAttribute: 'name',
+                            //                                    modifyQueryUsing: function (Builder $query) {
+                            //                                        $user = Filament::auth()->user();
+                            //
+                            //                                        if ($user instanceof Admin) {
+                            //                                            return;
+                            //                                        }
+                            //
+                            //                                        // Merchant → only their businesses
+                            //                                        $query->where('merchant_id', $user->id);
+                            //                                    }
+                            //                                )
+                            //                                ->preload()
+                            //                                ->searchable()
+                            //                                ->required(),
 
                             Select::make('type')
                                 ->required()
                                 ->options([
-                                    'stock'          => 'Stock',
-                                    'service'        => 'Service',
+                                    'stock' => 'Stock',
+                                    'service' => 'Service',
                                     'measured_stock' => 'Measured',
-//                                    'custom'         => 'Custom',
+                                    //                                    'custom'         => 'Custom',
                                 ])
                                 ->reactive()
-                                ->afterStateUpdated(fn ($state, callable $set) =>
-                                $state === 'service' ? $set('track_inventory', false) : null
+                                ->afterStateUpdated(fn ($state, callable $set) => $state === 'service' ? $set('track_inventory', false) : null
                                 ),
 
                             Select::make('unit')
                                 ->required()
                                 ->default('pcs')
-                                ->options(\App\Support\ProductUnit::options()),
+                                ->options(ProductUnit::options()),
 
-                                TextInput::make('purchase_price')
+                            TextInput::make('purchase_price')
                                 ->label('Purchase Price')
                                 ->numeric()
                                 ->prefix('PKR')
@@ -504,77 +499,76 @@ class ProductForm
                                 ->numeric()
                                 ->prefix('PKR')
                                 ->nullable(),
-                            ]),
+                        ]),
 
-//            Section::make('Custom Fields')
-//                ->columnSpanFull()
-//                ->description('Define dynamic attributes like Size, Color, Voltage, Karat.')
-//                ->schema([
-//                    Repeater::make('options')
-//                        ->columnSpanFull()
-//                        ->collapsible()
-//                        ->columns(2)
-//                        ->itemLabel(fn ($state) => $state['display_name'] ?? $state['name'] ?? 'Custom Field')
-//                        ->schema([
-//
-//                            Select::make('field_type')
-//                                ->label('Type')
-//                                ->required()
-//                                ->options([
-//                                    'select'     => 'Select',
-//                                    'numeric'    => 'Numeric',
-//                                    'alphabetic' => 'Text',
-//                                ])
-//                                ->reactive(),
-//
-////                            Toggle::make('is_required')
-////                                ->label('Required')
-////                                ->default(false),
-//
-//                            TextInput::make('name')
-//                                ->label('Label')
-//                                ->maxLength(255)
-//                                ->required(),
-////
-////                            TextInput::make('display_name')
-////                                ->label('Label')
-////                                ->required(),
-//
-//                            // ✅ Only for "select" type
-//                            Repeater::make('values')
-//                                ->label('Options')
-//                                ->columnSpanFull()
-//                                ->visible(fn ($get) => $get('field_type') === 'select')
-//                                ->columns(2)
-//                                ->grid(2)
-//                                ->schema([
-//                                    TextInput::make('value')
-//                                        ->required()
-//                                        ->placeholder('e.g. Small')
-//                                        ->hiddenLabel(),
-//                                ])
-//                                ->minItems(1)
-//                                ->addActionLabel('+'),
-//
-//                            TextInput::make('min')
-//                                ->label('Min')
-//                                ->numeric()
-//                                ->visible(fn ($get) => $get('field_type') === 'numeric'),
-//
-//                            TextInput::make('max')
-//                                ->label('Max')
-//                                ->numeric()
-//                                ->visible(fn ($get) => $get('field_type') === 'numeric'),
-//                        ])
-//                        ->addActionLabel('+ Add Field'),
-//                ]),
+                    //            Section::make('Custom Fields')
+                    //                ->columnSpanFull()
+                    //                ->description('Define dynamic attributes like Size, Color, Voltage, Karat.')
+                    //                ->schema([
+                    //                    Repeater::make('options')
+                    //                        ->columnSpanFull()
+                    //                        ->collapsible()
+                    //                        ->columns(2)
+                    //                        ->itemLabel(fn ($state) => $state['display_name'] ?? $state['name'] ?? 'Custom Field')
+                    //                        ->schema([
+                    //
+                    //                            Select::make('field_type')
+                    //                                ->label('Type')
+                    //                                ->required()
+                    //                                ->options([
+                    //                                    'select'     => 'Select',
+                    //                                    'numeric'    => 'Numeric',
+                    //                                    'alphabetic' => 'Text',
+                    //                                ])
+                    //                                ->reactive(),
+                    //
+                    // //                            Toggle::make('is_required')
+                    // //                                ->label('Required')
+                    // //                                ->default(false),
+                    //
+                    //                            TextInput::make('name')
+                    //                                ->label('Label')
+                    //                                ->maxLength(255)
+                    //                                ->required(),
+                    // //
+                    // //                            TextInput::make('display_name')
+                    // //                                ->label('Label')
+                    // //                                ->required(),
+                    //
+                    //                            // ✅ Only for "select" type
+                    //                            Repeater::make('values')
+                    //                                ->label('Options')
+                    //                                ->columnSpanFull()
+                    //                                ->visible(fn ($get) => $get('field_type') === 'select')
+                    //                                ->columns(2)
+                    //                                ->grid(2)
+                    //                                ->schema([
+                    //                                    TextInput::make('value')
+                    //                                        ->required()
+                    //                                        ->placeholder('e.g. Small')
+                    //                                        ->hiddenLabel(),
+                    //                                ])
+                    //                                ->minItems(1)
+                    //                                ->addActionLabel('+'),
+                    //
+                    //                            TextInput::make('min')
+                    //                                ->label('Min')
+                    //                                ->numeric()
+                    //                                ->visible(fn ($get) => $get('field_type') === 'numeric'),
+                    //
+                    //                            TextInput::make('max')
+                    //                                ->label('Max')
+                    //                                ->numeric()
+                    //                                ->visible(fn ($get) => $get('field_type') === 'numeric'),
+                    //                        ])
+                    //                        ->addActionLabel('+ Add Field'),
+                    //                ]),
 
-//            Toggle::make('is_stocked')->default(true),
-            Toggle::make('is_active')->default(true),
+                    //            Toggle::make('is_stocked')->default(true),
+                    Toggle::make('is_active')->default(true),
 
-                    ])
-            ]);
+                ]),
+        ]);
 
     }
-
 }

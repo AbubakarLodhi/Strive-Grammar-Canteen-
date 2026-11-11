@@ -2,8 +2,8 @@
 
 namespace App\Models;
 
-use App\Models\SaleReturn;
 use App\Services\CreditReminderScheduler;
+use App\Services\SaleReturnService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
@@ -15,18 +15,18 @@ use OwenIt\Auditing\Contracts\Auditable;
 
 class Sale extends Model implements Auditable
 {
-    use \OwenIt\Auditing\Auditable;
     use HasUuids;
+    use \OwenIt\Auditing\Auditable;
     use SoftDeletes;
 
     public const STATUS_DRAFT = 'draft';
 
     public const STATUS_POSTED = 'posted';
 
-    /** @var bool $incrementing */
+    /** @var bool */
     public $incrementing = false;
 
-    /** @var list<string> $fillable */
+    /** @var list<string> */
     protected $fillable = [
         'merchant_id',
         'customer_id',
@@ -45,7 +45,7 @@ class Sale extends Model implements Auditable
         'posted_by',
     ];
 
-    /** @var string $keyType */
+    /** @var string */
     protected $keyType = 'string';
 
     /** @return array<string, string> */
@@ -119,6 +119,11 @@ class Sale extends Model implements Auditable
         return $this->status === self::STATUS_POSTED;
     }
 
+    public function hasReturns(): bool
+    {
+        return SaleReturnService::saleHasReturns($this);
+    }
+
     public function isCreditWithBalance(): bool
     {
         return $this->payment_type === 'credit' && (float) $this->due_amount > 0;
@@ -158,7 +163,7 @@ class Sale extends Model implements Auditable
                     ->withTrashed()
                     ->with('items.variants')
                     ->get()
-                    ->each(fn (SaleReturn $return): bool|null => $return->forceDelete());
+                    ->each(fn (SaleReturn $return): ?bool => $return->forceDelete());
 
                 return;
             }

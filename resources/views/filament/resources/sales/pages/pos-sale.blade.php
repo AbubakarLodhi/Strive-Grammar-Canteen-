@@ -943,7 +943,6 @@
                                 </template>
                             </div>
                             <div class="pos-prod-name" x-text="product.name"></div>
-                            <div class="pos-prod-sku" x-text="product.sku ? 'SKU: ' + product.sku : ''"></div>
                             <div class="pos-prod-price" x-text="'PKR ' + parseFloat(product.selling_price || 0).toLocaleString()"></div>
 
                             <div class="pos-card-qty-ctrl" x-show="getProductQty(product.id) > 0" @click.stop>

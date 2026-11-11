@@ -39,7 +39,50 @@ class ListSalesPaginationTotalTest extends TestCase
         Livewire::test(ListSales::class)
             ->assertSuccessful()
             ->assertSee('Total sale: PKR 200.00', false)
-            ->assertSee('Per page', false);
+            ->assertSee('Per page', false)
+            ->assertDontSee('fi-sales-list-total', false)
+            ->assertDontSee('Livewire.hook(\'morph.updated\'', false);
+    }
+
+    public function test_sales_list_keeps_unique_rows_after_date_filter_reset(): void
+    {
+        [$merchant, $branch, $variant] = $this->seedMerchantCatalog();
+
+        $this->createPostedSale($merchant, $branch, $variant, total: 100.00);
+        $this->createPostedSale($merchant, $branch, $variant, total: 200.00);
+
+        $this->actingAs($merchant, 'merchant');
+        Filament::setCurrentPanel(Filament::getPanel('merchant'));
+
+        $component = Livewire::test(ListSales::class)
+            ->assertSuccessful()
+            ->set('tableDeferredFilters.sale_date_range.from_date', now()->toDateString())
+            ->set('tableDeferredFilters.sale_date_range.to_date', now()->toDateString())
+            ->call('applyTableFilters')
+            ->call('removeTableFilters')
+            ->assertSuccessful()
+            ->assertDontSee('fi-sales-list-total', false);
+
+        $ids = $component->instance()->getFilteredTableQuery()->pluck('id');
+
+        $this->assertCount(2, $ids);
+        $this->assertSame(2, $ids->unique()->count());
+        $this->assertSame(
+            'Total sale: PKR 300.00',
+            $component->instance()->getTablePaginationTotalLabel(),
+        );
+    }
+
+    public function test_sales_list_total_teleport_hook_is_not_registered(): void
+    {
+        $this->assertFileDoesNotExist(app_path('Filament/Support/SalesListTotalRenderHook.php'));
+        $this->assertFileDoesNotExist(resource_path('views/filament/resources/sales/partials/sales-list-total.blade.php'));
+
+        $merchantProvider = file_get_contents(app_path('Providers/Filament/MerchantPanelProvider.php'));
+        $userProvider = file_get_contents(app_path('Providers/Filament/UserPanelProvider.php'));
+
+        $this->assertStringNotContainsString('SalesListTotalRenderHook', $merchantProvider);
+        $this->assertStringNotContainsString('SalesListTotalRenderHook', $userProvider);
     }
 
     /**

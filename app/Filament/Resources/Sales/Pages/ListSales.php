@@ -18,7 +18,21 @@ class ListSales extends ListRecords
         $query = parent::getTableQuery();
 
         if ($query instanceof Builder) {
-            return $query->posted();
+            return $query
+                ->posted()
+                ->withExists('returns')
+                ->setEagerLoads([])
+                ->with([
+                    'customer:id,name',
+                    'merchant:id,name',
+                    'createdBy:id,name',
+                    'returns:id,sale_id',
+                    'items:id,sale_id,product_id,business_id,branch_id,quantity,line_total,discount,tax',
+                    'items.product:id,name,sku',
+                    'items.business:id,name',
+                    'items.branch:id,name',
+                    'items.variants:id,sale_item_id,quantity',
+                ]);
         }
 
         return $query;
@@ -29,16 +43,18 @@ class ListSales extends ListRecords
      */
     public function getTablePaginationTotalLabel(): ?string
     {
-        $query = $this->getFilteredTableQuery();
+        return once(function (): ?string {
+            $query = $this->getFilteredTableQuery();
 
-        if (! $query) {
-            return null;
-        }
+            if (! $query) {
+                return null;
+            }
 
-        $table = $query->getModel()->getTable();
-        $total = (float) $query->clone()->reorder()->sum("{$table}.total_amount");
+            $table = $query->getModel()->getTable();
+            $total = (float) $query->clone()->reorder()->sum("{$table}.total_amount");
 
-        return 'Total sale: PKR '.number_format($total, 2);
+            return 'Total sale: PKR '.number_format($total, 2);
+        });
     }
 
     protected function getHeaderActions(): array

@@ -13,6 +13,7 @@ use App\Models\Merchant;
 use App\Models\PermissionModule;
 use App\Models\Sale;
 use App\Models\User;
+use App\Services\SaleReturnService;
 use BackedEnum;
 use Filament\Facades\Filament;
 use Filament\Resources\Resource;
@@ -63,36 +64,22 @@ class SaleResource extends Resource
             return false;
         }
 
-        if ($record->returns()->exists() && ! self::hasReturnableItems($record)) {
+        if ($record->hasReturns() && ! SaleReturnService::hasReturnableItems($record)) {
             return false;
         }
 
         return $user->hasPermissionTo('sales.update', $guard);
     }
 
-    private static function hasReturnableItems(Sale $sale): bool
-    {
-        foreach ($sale->items as $item) {
-            $itemQty = (int) ($item->quantity ?? 0);
-            $variantQty = (int) $item->variants->sum('quantity');
-
-            if (max($itemQty, $variantQty) > 0) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     public static function getEloquentQuery(): Builder
     {
         $query = parent::getEloquentQuery()
             ->with([
-                'returns:id,sale_id,subtotal,total_discount,total_tax,total_amount',
+                'returns:id,sale_id',
                 'items.product:id,name,sku',
                 'items.business:id,name',
                 'items.branch:id,name',
-                'creditReminders:id,sale_id,is_active,next_send_at,last_sent_at,remind_at',
+                'items.variants:id,sale_item_id,quantity',
             ]);
         $user = Filament::auth()->user();
 

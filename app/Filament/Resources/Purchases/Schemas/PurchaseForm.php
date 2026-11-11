@@ -1057,7 +1057,7 @@ class PurchaseForm
 
     private static function productOptionLabel(Product $product): string
     {
-        $label = "{$product->name} ({$product->sku})";
+        $label = (string) $product->name;
 
         if (! ProductStockAvailability::productTracksInventory($product)) {
             return $label;

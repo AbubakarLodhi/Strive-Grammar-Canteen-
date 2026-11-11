@@ -12,6 +12,9 @@ use Illuminate\Support\Str;
 
 class SaleReturnService
 {
+    /** @var \WeakMap<Sale, bool>|null */
+    private static ?\WeakMap $returnableItemsCache = null;
+
     public static function createReturn(Sale $sale, array $data): SaleReturn
     {
         return DB::transaction(function () use ($sale, $data) {
@@ -225,6 +228,12 @@ class SaleReturnService
 
     public static function hasReturnableItems(Sale $sale): bool
     {
+        self::$returnableItemsCache ??= new \WeakMap;
+
+        if (isset(self::$returnableItemsCache[$sale])) {
+            return self::$returnableItemsCache[$sale];
+        }
+
         $sale->loadMissing('items.variants');
 
         foreach ($sale->items as $item) {
@@ -232,11 +241,24 @@ class SaleReturnService
             $variantQty = (int) $item->variants->sum('quantity');
 
             if (max($itemQty, $variantQty) > 0) {
-                return true;
+                return self::$returnableItemsCache[$sale] = true;
             }
         }
 
-        return false;
+        return self::$returnableItemsCache[$sale] = false;
+    }
+
+    public static function saleHasReturns(Sale $sale): bool
+    {
+        if (array_key_exists('returns_exists', $sale->getAttributes())) {
+            return (bool) $sale->getAttribute('returns_exists');
+        }
+
+        if ($sale->relationLoaded('returns')) {
+            return $sale->returns->isNotEmpty();
+        }
+
+        return $sale->returns()->exists();
     }
 
     public static function deleteReturn(SaleReturn $return): void

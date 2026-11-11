@@ -27,10 +27,6 @@ class ProductVariantsRelationManager extends RelationManager
                 ->helperText('Optional (e.g. 72V / 30Ah)')
                 ->maxLength(255),
 
-            TextInput::make('sku')
-                ->required()
-                ->maxLength(255),
-
             TextInput::make('purchase_price')
                 ->numeric()
                 ->nullable(),
@@ -49,7 +45,6 @@ class ProductVariantsRelationManager extends RelationManager
         return $table
             ->columns([
                 TextColumn::make('name')->searchable(),
-                TextColumn::make('sku')->searchable(),
                 TextColumn::make('selling_price')->money('PKR')->sortable(),
                 IconColumn::make('is_active')
                     ->boolean()

@@ -73,9 +73,6 @@ class PurchaseInfolist
                                 TextEntry::make('product.name')
                                     ->label('Product'),
 
-                                TextEntry::make('product.sku')
-                                    ->label('SKU'),
-
                                 TextEntry::make('quantity')
                                     ->label('Quantity'),
 
@@ -85,11 +82,11 @@ class PurchaseInfolist
 
                                 TextEntry::make('discount')
                                     ->label('Discount (%)')
-                                    ->formatStateUsing(fn ($state) => number_format((float) ($state ?? 0), 2) . '%'),
+                                    ->formatStateUsing(fn ($state) => number_format((float) ($state ?? 0), 2).'%'),
 
                                 TextEntry::make('tax')
                                     ->label('Tax (%)')
-                                    ->formatStateUsing(fn ($state) => number_format((float) ($state ?? 0), 2) . '%'),
+                                    ->formatStateUsing(fn ($state) => number_format((float) ($state ?? 0), 2).'%'),
 
                                 TextEntry::make('line_total')
                                     ->label('Line Total')
