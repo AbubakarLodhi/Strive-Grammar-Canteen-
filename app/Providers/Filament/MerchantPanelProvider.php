@@ -5,6 +5,7 @@ namespace App\Providers\Filament;
 use App\Filament\Auth\Login;
 use App\Filament\Pages\Dashboard;
 use App\Filament\Pages\EditProfile;
+use App\Filament\Support\SalesListTotalRenderHook;
 use App\Http\Middleware\DemoSessionTimeout;
 use App\Http\Middleware\EnsureStaffIsVerified;
 use App\Http\Middleware\SetPanelAuthDefaults;
@@ -150,6 +151,6 @@ class MerchantPanelProvider extends PanelProvider
             )
             ->globalSearch(false);
 
-        return $panel;
+        return SalesListTotalRenderHook::register($panel);
     }
 }

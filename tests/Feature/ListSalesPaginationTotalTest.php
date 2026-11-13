@@ -41,6 +41,11 @@ class ListSalesPaginationTotalTest extends TestCase
             ->assertSuccessful()
             ->assertSee('Total sale: PKR 200.00', false)
             ->assertSee('Per page', false);
+
+        $this->assertSame(
+            'Total sale: PKR 200.00',
+            Livewire::test(ListSales::class)->instance()->getTablePaginationTotalLabel(),
+        );
     }
 
     public function test_sales_list_total_respects_date_range_filter_query(): void
@@ -77,15 +82,19 @@ class ListSalesPaginationTotalTest extends TestCase
         $this->assertSame(100.0, (float) $filtered->sum('total_amount'));
     }
 
-    public function test_pagination_views_resolve_total_via_livewire_current(): void
+    public function test_sales_list_total_render_hook_is_registered(): void
     {
-        $pagination = file_get_contents(resource_path('views/vendor/filament/components/pagination/index.blade.php'));
-        $tables = file_get_contents(resource_path('views/vendor/filament-tables/index.blade.php'));
+        $this->assertFileExists(app_path('Filament/Support/SalesListTotalRenderHook.php'));
+        $this->assertFileExists(resource_path('views/filament/resources/sales/partials/sales-list-total.blade.php'));
 
-        $this->assertStringContainsString('Livewire::current()', $pagination);
-        $this->assertStringContainsString('Livewire::current()', $tables);
-        $this->assertStringContainsString('getTablePaginationTotalLabel', $pagination);
-        $this->assertStringContainsString(':total-label="$paginationTotalLabel"', $tables);
+        $merchantProvider = file_get_contents(app_path('Providers/Filament/MerchantPanelProvider.php'));
+        $userProvider = file_get_contents(app_path('Providers/Filament/UserPanelProvider.php'));
+        $partial = file_get_contents(resource_path('views/filament/resources/sales/partials/sales-list-total.blade.php'));
+
+        $this->assertStringContainsString('SalesListTotalRenderHook', $merchantProvider);
+        $this->assertStringContainsString('SalesListTotalRenderHook', $userProvider);
+        $this->assertStringNotContainsString('Livewire.hook', $partial);
+        $this->assertStringNotContainsString('ctn.prepend', $partial);
     }
 
     /**

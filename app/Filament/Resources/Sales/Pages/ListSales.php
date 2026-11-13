@@ -6,12 +6,26 @@ use App\Filament\Resources\Sales\SaleResource;
 use Filament\Actions\CreateAction;
 use Filament\Facades\Filament;
 use Filament\Resources\Pages\ListRecords;
+use Filament\Tables\Table;
+use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Support\HtmlString;
 
 class ListSales extends ListRecords
 {
     protected static string $resource = SaleResource::class;
+
+    public function table(Table $table): Table
+    {
+        return $table
+            ->description(fn (): Htmlable|string|null => $this->salesTotalDescription());
+    }
+
+    public function getSubheading(): string|Htmlable|null
+    {
+        return $this->getTablePaginationTotalLabel();
+    }
 
     protected function getTableQuery(): Builder|Relation|null
     {
@@ -39,8 +53,9 @@ class ListSales extends ListRecords
     }
 
     /**
-     * Shown next to the Per page control in the shared pagination footer.
-     * Uses the filtered query so date filters update the total.
+     * Filtered sales total. Used by page subheading, table description,
+     * pagination footer (when vendor views resolve Livewire), and the
+     * static post-table render hook.
      */
     public function getTablePaginationTotalLabel(): ?string
     {
@@ -54,6 +69,19 @@ class ListSales extends ListRecords
         $total = (float) $query->clone()->reorder()->sum("{$table}.total_amount");
 
         return 'Total sale: PKR '.number_format($total, 2);
+    }
+
+    private function salesTotalDescription(): Htmlable|string|null
+    {
+        $label = $this->getTablePaginationTotalLabel();
+
+        if (blank($label)) {
+            return null;
+        }
+
+        return new HtmlString(
+            '<span class="font-semibold text-gray-900 dark:text-gray-100">'.e($label).'</span>'
+        );
     }
 
     protected function getHeaderActions(): array
