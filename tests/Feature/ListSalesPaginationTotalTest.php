@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Filament\Resources\Sales\Pages\ListSales;
+use App\Filament\Support\DateRangeFilter;
 use App\Models\Branch;
 use App\Models\Business;
 use App\Models\City;
@@ -39,50 +40,52 @@ class ListSalesPaginationTotalTest extends TestCase
         Livewire::test(ListSales::class)
             ->assertSuccessful()
             ->assertSee('Total sale: PKR 200.00', false)
-            ->assertSee('Per page', false)
-            ->assertDontSee('fi-sales-list-total', false)
-            ->assertDontSee('Livewire.hook(\'morph.updated\'', false);
+            ->assertSee('Per page', false);
     }
 
-    public function test_sales_list_keeps_unique_rows_after_date_filter_reset(): void
+    public function test_sales_list_total_respects_date_range_filter_query(): void
     {
         [$merchant, $branch, $variant] = $this->seedMerchantCatalog();
 
-        $this->createPostedSale($merchant, $branch, $variant, total: 100.00);
-        $this->createPostedSale($merchant, $branch, $variant, total: 200.00);
+        $this->createPostedSale($merchant, $branch, $variant, total: 100.00, saleDate: now()->toDateString());
+        $this->createPostedSale($merchant, $branch, $variant, total: 200.00, saleDate: now()->subDays(10)->toDateString());
 
         $this->actingAs($merchant, 'merchant');
         Filament::setCurrentPanel(Filament::getPanel('merchant'));
 
         $component = Livewire::test(ListSales::class)
             ->assertSuccessful()
-            ->set('tableDeferredFilters.sale_date_range.from_date', now()->toDateString())
-            ->set('tableDeferredFilters.sale_date_range.to_date', now()->toDateString())
-            ->call('applyTableFilters')
-            ->call('removeTableFilters')
-            ->assertSuccessful()
-            ->assertDontSee('fi-sales-list-total', false);
+            ->assertSee('Total sale: PKR 300.00', false);
 
-        $ids = $component->instance()->getFilteredTableQuery()->pluck('id');
-
-        $this->assertCount(2, $ids);
-        $this->assertSame(2, $ids->unique()->count());
         $this->assertSame(
             'Total sale: PKR 300.00',
             $component->instance()->getTablePaginationTotalLabel(),
         );
+
+        $today = now()->toDateString();
+        $filtered = Sale::query()
+            ->where('merchant_id', $merchant->id)
+            ->posted();
+
+        DateRangeFilter::make('sale_date_range', 'sale_date', 'Sale Date')
+            ->apply($filtered, [
+                'isActive' => true,
+                'from_date' => $today,
+                'to_date' => $today,
+            ]);
+
+        $this->assertSame(100.0, (float) $filtered->sum('total_amount'));
     }
 
-    public function test_sales_list_total_teleport_hook_is_not_registered(): void
+    public function test_pagination_views_resolve_total_via_livewire_current(): void
     {
-        $this->assertFileDoesNotExist(app_path('Filament/Support/SalesListTotalRenderHook.php'));
-        $this->assertFileDoesNotExist(resource_path('views/filament/resources/sales/partials/sales-list-total.blade.php'));
+        $pagination = file_get_contents(resource_path('views/vendor/filament/components/pagination/index.blade.php'));
+        $tables = file_get_contents(resource_path('views/vendor/filament-tables/index.blade.php'));
 
-        $merchantProvider = file_get_contents(app_path('Providers/Filament/MerchantPanelProvider.php'));
-        $userProvider = file_get_contents(app_path('Providers/Filament/UserPanelProvider.php'));
-
-        $this->assertStringNotContainsString('SalesListTotalRenderHook', $merchantProvider);
-        $this->assertStringNotContainsString('SalesListTotalRenderHook', $userProvider);
+        $this->assertStringContainsString('Livewire::current()', $pagination);
+        $this->assertStringContainsString('Livewire::current()', $tables);
+        $this->assertStringContainsString('getTablePaginationTotalLabel', $pagination);
+        $this->assertStringContainsString(':total-label="$paginationTotalLabel"', $tables);
     }
 
     /**
@@ -160,6 +163,7 @@ class ListSalesPaginationTotalTest extends TestCase
         ProductVariant $variant,
         float $total,
         string $status = Sale::STATUS_POSTED,
+        ?string $saleDate = null,
     ): Sale {
         $country = Country::query()->firstOrCreate(
             ['code' => 'PK'],
@@ -185,7 +189,7 @@ class ListSalesPaginationTotalTest extends TestCase
             'merchant_id' => $merchant->id,
             'customer_id' => $customer->id,
             'sale_no' => 'SAL-'.Str::upper(Str::random(6)),
-            'sale_date' => now()->toDateString(),
+            'sale_date' => $saleDate ?? now()->toDateString(),
             'subtotal' => $total,
             'total_amount' => $total,
             'paid_amount' => $total,

@@ -261,13 +261,21 @@ class SaleForm
                     Section::make('Add Product')
                         ->description('Search a product, set the quantity and pricing, then click “Add to list”.')
                         ->schema([
-                            Grid::make(4)
+                            Grid::make([
+                                'default' => 1,
+                                'md' => 6,
+                                'xl' => 12,
+                            ])
                                 ->schema([
                                     Select::make('staging_product_id')
                                         ->label('Product')
                                         ->searchable()
                                         ->live()
                                         ->dehydrated(false)
+                                        ->columnSpan(fn (callable $get): array => [
+                                            'md' => 3,
+                                            'xl' => self::productHasVariants($get('staging_product_id')) ? 2 : 3,
+                                        ])
                                         ->options(fn ($livewire): array => self::productOptions(
                                             excludeSaleId: self::editingSaleId($livewire),
                                         ))
@@ -398,6 +406,10 @@ class SaleForm
                                         ->live()
                                         ->allowHtml()
                                         ->dehydrated(false)
+                                        ->columnSpan([
+                                            'md' => 3,
+                                            'xl' => 2,
+                                        ])
                                         ->getOptionLabelUsing(fn ($value) => Branch::withTrashed()->find($value)?->name ?? $value)
                                         ->options(function (callable $get): array {
                                             $productId = $get('staging_product_id');
@@ -472,6 +484,10 @@ class SaleForm
                                         ->searchable()
                                         ->live()
                                         ->dehydrated(false)
+                                        ->columnSpan([
+                                            'md' => 3,
+                                            'xl' => 2,
+                                        ])
                                         ->visible(fn (callable $get): bool => self::productHasVariants($get('staging_product_id')))
                                         ->options(function (callable $get): array {
                                             $productId = $get('staging_product_id');
@@ -556,6 +572,10 @@ class SaleForm
                                         ->default(1)
                                         ->minValue(1)
                                         ->dehydrated(false)
+                                        ->columnSpan([
+                                            'md' => 2,
+                                            'xl' => 1,
+                                        ])
                                         ->live(onBlur: true)
                                         ->afterStateUpdated(function ($state, callable $set, callable $get) {
                                             if ($state === null || $state === '' || ! is_numeric($state)) {
@@ -597,10 +617,7 @@ class SaleForm
 
                                             self::recalcStagingLineTotal($set, $get);
                                         }),
-                                ]),
 
-                            Grid::make(4)
-                                ->schema([
                                     TextInput::make('staging_unit_price')
                                         ->label('Unit Price')
                                         ->inputMode('decimal')
@@ -608,6 +625,10 @@ class SaleForm
                                         ->default(0)
                                         ->minValue(0)
                                         ->dehydrated(false)
+                                        ->columnSpan([
+                                            'md' => 2,
+                                            'xl' => 1,
+                                        ])
                                         ->live(onBlur: true)
                                         ->afterStateUpdated(function ($state, callable $set, callable $get) {
                                             if ($state === null || $state === '' || ! is_numeric($state)) {
@@ -618,7 +639,7 @@ class SaleForm
                                         }),
 
                                     TextInput::make('staging_discount')
-                                        ->label('Discount (%)')
+                                        ->label('Discount')
                                         ->inputMode('decimal')
                                         ->rule('numeric')
                                         ->default(0)
@@ -627,25 +648,34 @@ class SaleForm
                                         ->step(0.01)
                                         ->suffix('%')
                                         ->dehydrated(false)
+                                        ->columnSpan([
+                                            'md' => 2,
+                                            'xl' => 1,
+                                        ])
                                         ->live(onBlur: true)
                                         ->afterStateUpdated(fn (callable $set, callable $get) => self::recalcStagingLineTotal($set, $get))
                                         ->visible(fn (callable $get) => ($get('discount_mode') ?? 'percent') !== 'amount'),
 
                                     TextInput::make('staging_discount_amount')
-                                        ->label('Discount (PKR)')
+                                        ->label('Discount')
                                         ->inputMode('decimal')
                                         ->rule('numeric')
                                         ->default(0)
                                         ->minValue(0)
                                         ->maxValue(fn (callable $get) => max(0, (float) ($get('staging_quantity') ?? 0) * (float) ($get('staging_unit_price') ?? 0)))
                                         ->step(0.01)
+                                        ->suffix('PKR')
                                         ->dehydrated(false)
+                                        ->columnSpan([
+                                            'md' => 2,
+                                            'xl' => 1,
+                                        ])
                                         ->live(onBlur: true)
                                         ->afterStateUpdated(fn (callable $set, callable $get) => self::recalcStagingLineTotal($set, $get))
                                         ->visible(fn (callable $get) => ($get('discount_mode') ?? 'percent') === 'amount'),
 
                                     TextInput::make('staging_tax')
-                                        ->label('Tax (%)')
+                                        ->label('Tax')
                                         ->inputMode('decimal')
                                         ->rule('numeric')
                                         ->default(0)
@@ -654,19 +684,28 @@ class SaleForm
                                         ->step(0.01)
                                         ->suffix('%')
                                         ->dehydrated(false)
+                                        ->columnSpan([
+                                            'md' => 2,
+                                            'xl' => 1,
+                                        ])
                                         ->live(onBlur: true)
                                         ->afterStateUpdated(fn (callable $set, callable $get) => self::recalcStagingLineTotal($set, $get))
                                         ->visible(fn (callable $get) => ($get('discount_mode') ?? 'percent') !== 'amount'),
 
                                     TextInput::make('staging_tax_amount')
-                                        ->label('Tax (PKR)')
+                                        ->label('Tax')
                                         ->inputMode('decimal')
                                         ->rule('numeric')
                                         ->default(0)
                                         ->minValue(0)
                                         ->maxValue(fn (callable $get) => max(0, (float) ($get('staging_quantity') ?? 0) * (float) ($get('staging_unit_price') ?? 0)))
                                         ->step(0.01)
+                                        ->suffix('PKR')
                                         ->dehydrated(false)
+                                        ->columnSpan([
+                                            'md' => 2,
+                                            'xl' => 1,
+                                        ])
                                         ->live(onBlur: true)
                                         ->afterStateUpdated(fn (callable $set, callable $get) => self::recalcStagingLineTotal($set, $get))
                                         ->visible(fn (callable $get) => ($get('discount_mode') ?? 'percent') === 'amount'),
@@ -676,7 +715,11 @@ class SaleForm
                                         ->numeric()
                                         ->disabled()
                                         ->dehydrated(false)
-                                        ->default(0),
+                                        ->default(0)
+                                        ->columnSpan(fn (callable $get): array => [
+                                            'md' => 2,
+                                            'xl' => self::productHasVariants($get('staging_product_id')) ? 2 : 3,
+                                        ]),
                                 ]),
 
                             Hidden::make('staging_line_subtotal')

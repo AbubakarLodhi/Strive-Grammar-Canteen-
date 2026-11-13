@@ -16,9 +16,14 @@
     // method_exists($this, ...) is unreliable inside Blade components on production
     // when $this is the anonymous component instead of the Livewire page.
     $paginationTotalLabel = $totalLabel;
+    $livewire = \Livewire\Livewire::current();
 
-    if (blank($paginationTotalLabel) && method_exists($this, 'getTablePaginationTotalLabel')) {
-        $paginationTotalLabel = $this->getTablePaginationTotalLabel();
+    if (
+        blank($paginationTotalLabel)
+        && $livewire
+        && method_exists($livewire, 'getTablePaginationTotalLabel')
+    ) {
+        $paginationTotalLabel = $livewire->getTablePaginationTotalLabel();
     }
 
     $hasPageOptions = count($pageOptions) > 1;

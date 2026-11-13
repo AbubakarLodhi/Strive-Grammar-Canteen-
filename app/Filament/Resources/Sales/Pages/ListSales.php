@@ -40,21 +40,20 @@ class ListSales extends ListRecords
 
     /**
      * Shown next to the Per page control in the shared pagination footer.
+     * Uses the filtered query so date filters update the total.
      */
     public function getTablePaginationTotalLabel(): ?string
     {
-        return once(function (): ?string {
-            $query = $this->getFilteredTableQuery();
+        $query = $this->getFilteredTableQuery();
 
-            if (! $query) {
-                return null;
-            }
+        if (! $query) {
+            return null;
+        }
 
-            $table = $query->getModel()->getTable();
-            $total = (float) $query->clone()->reorder()->sum("{$table}.total_amount");
+        $table = $query->getModel()->getTable();
+        $total = (float) $query->clone()->reorder()->sum("{$table}.total_amount");
 
-            return 'Total sale: PKR '.number_format($total, 2);
-        });
+        return 'Total sale: PKR '.number_format($total, 2);
     }
 
     protected function getHeaderActions(): array

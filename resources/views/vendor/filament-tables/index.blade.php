@@ -2472,8 +2472,9 @@
                 @php
                     $hasExtremePaginationLinks = $hasExtremePaginationLinks();
                     $paginationPageOptions = $getPaginationPageOptions();
-                    $paginationTotalLabel = method_exists($this, 'getTablePaginationTotalLabel')
-                        ? $this->getTablePaginationTotalLabel()
+                    $livewire = \Livewire\Livewire::current() ?? $this;
+                    $paginationTotalLabel = method_exists($livewire, 'getTablePaginationTotalLabel')
+                        ? $livewire->getTablePaginationTotalLabel()
                         : null;
                 @endphp
 

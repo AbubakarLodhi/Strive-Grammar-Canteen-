@@ -11,7 +11,7 @@ class DateRangeFilterQueryTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_date_range_filter_compares_column_directly_without_where_date(): void
+    public function test_date_range_filter_normalizes_bounds_and_uses_where_date(): void
     {
         $filter = DateRangeFilter::make('sale_date_range', 'sale_date', 'Sale Date');
 
@@ -25,8 +25,10 @@ class DateRangeFilterQueryTest extends TestCase
         $sql = strtolower($query->toSql());
         $bindings = $query->getBindings();
 
-        $this->assertStringNotContainsString('date(', $sql);
-        $this->assertStringContainsString('"sale_date"', $sql);
+        $this->assertTrue(
+            str_contains($sql, 'date("sale_date")') || str_contains($sql, 'strftime('),
+            'Expected a date-safe comparison on sale_date.',
+        );
         $this->assertContains('2026-01-15', $bindings);
         $this->assertContains('2026-01-20', $bindings);
     }
